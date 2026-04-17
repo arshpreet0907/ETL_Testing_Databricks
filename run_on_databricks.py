@@ -56,7 +56,7 @@ print(f"Output base  : {OUTPUT_BASE}")
 
 import sys, os
 
-REPO_PATH = f"/Workspace/Repos/{DATABRICKS_USERNAME}/{REPO_NAME}"
+REPO_PATH = f"/Workspace/Users/{DATABRICKS_USERNAME}/{REPO_NAME}"
 
 # Verify repo exists
 if not os.path.isdir(REPO_PATH):
