@@ -1,7 +1,7 @@
 -- ============================================================
 -- Target table : dim_parts
 -- Dialect      : Snowflake
--- Generated    : 2026-04-17 15:17
+-- Generated    : 2026-04-17 15:38
 -- ============================================================
 
 CREATE TABLE IF NOT EXISTS dim_parts (

@@ -2,7 +2,7 @@
 -- STEP 3 : EXTRACT  |  source: sales_orders
 -- ============================================================
 -- Dialect    : MySQL 8+
--- Generated  : 2026-04-17 15:17
+-- Generated  : 2026-04-17 15:38
 --
 -- Columns fetched from main source table (dropped cols excluded).
 -- Excluded (drop): internal_ref_no

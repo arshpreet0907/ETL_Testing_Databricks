@@ -2,7 +2,7 @@
 -- STEP 3 : EXTRACT  |  source: quality_inspections
 -- ============================================================
 -- Dialect    : MySQL 8+
--- Generated  : 2026-04-17 15:17
+-- Generated  : 2026-04-17 15:38
 --
 -- Columns fetched from main source table (dropped cols excluded).
 -- Excluded (drop): tool_id, photo_ref_id, batch_id

@@ -1,7 +1,7 @@
 -- ============================================================
 -- Source table : cost_ledger
 -- Dialect      : MySQL 8+
--- Generated    : 2026-04-17 15:17
+-- Generated    : 2026-04-17 15:38
 -- ============================================================
 
 CREATE TABLE IF NOT EXISTS cost_ledger (

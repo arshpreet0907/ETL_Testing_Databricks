@@ -251,7 +251,7 @@ else:
 
 # Show diff report if it exists
 if os.path.isfile(REPORT_CSV):
-    report_df = spark.read.option("header", True).csv(f"file:{REPORT_CSV}")
+    report_df = spark.read.option("header", True).csv(REPORT_CSV)
     print(f"Diff report: {report_df.count()} rows")
     display(report_df)
 else:
@@ -263,9 +263,10 @@ else:
 # CELL 12: CLEANUP
 # ═══════════════════════════════════════════════════════════════
 
-if transformed_df.is_cached:
-    transformed_df.unpersist()
-if target_df.is_cached:
-    target_df.unpersist()
-print("✅ Cache cleanup complete")
+# [SERVERLESS] Cache cleanup disabled — uncomment for dedicated cluster
+# if transformed_df.is_cached:
+#     transformed_df.unpersist()
+# if target_df.is_cached:
+#     target_df.unpersist()
+print("✅ Cleanup complete (caching disabled on serverless)")
 
