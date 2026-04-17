@@ -2,7 +2,7 @@
 -- STEP 3 : EXTRACT  |  source: supplier_master
 -- ============================================================
 -- Dialect    : MySQL 8+
--- Generated  : 2026-04-16 02:58
+-- Generated  : 2026-04-17 15:17
 --
 -- Columns fetched from main source table (dropped cols excluded).
 -- Excluded (drop): tax_id, bank_account_no, internal_notes, account_mgr_emp_id

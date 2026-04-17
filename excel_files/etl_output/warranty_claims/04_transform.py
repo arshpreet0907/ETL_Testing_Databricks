@@ -1,6 +1,6 @@
 """
 04_transform.py  —  warranty_claims  ->  fact_warranty
-Generated : 2026-04-16 02:58
+Generated : 2026-04-17 15:17
 
 Public API
 ----------
@@ -221,10 +221,10 @@ def apply_transforms(
         logger.debug('  [sf-coerce] repair_start_date: date -> null zero-dates')
         df = df.withColumn('repair_end_date', F.when(F.col('repair_end_date').cast(StringType()).startswith('0000-00-00'), F.lit(None)).otherwise(F.col('repair_end_date')))
         logger.debug('  [sf-coerce] repair_end_date: date -> null zero-dates')
-        df = df.withColumn('created_at', F.when(F.col('created_at').cast(StringType()).startswith('0000-00-00'), F.lit(None)).otherwise(F.col('created_at').cast(TimestampType())))
-        logger.debug('  [sf-coerce] created_at: datetime/timestamp -> TimestampType, null zero-datetimes')
-        df = df.withColumn('load_ts', F.when(F.col('load_ts').cast(StringType()).startswith('0000-00-00'), F.lit(None)).otherwise(F.col('load_ts').cast(TimestampType())))
-        logger.debug('  [sf-coerce] load_ts: datetime/timestamp -> TimestampType, null zero-datetimes')
+        df = df.withColumn('created_at', F.when(F.col('created_at').cast(StringType()).startswith('0000-00-00'), F.lit(None)).otherwise(F.to_utc_timestamp(F.col('created_at').cast(TimestampType()), 'Asia/Kolkata')))
+        logger.debug('  [sf-coerce] created_at: datetime/timestamp -> TimestampType (IST->UTC), null zero-datetimes')
+        df = df.withColumn('load_ts', F.when(F.col('load_ts').cast(StringType()).startswith('0000-00-00'), F.lit(None)).otherwise(F.to_utc_timestamp(F.col('load_ts').cast(TimestampType()), 'Asia/Kolkata')))
+        logger.debug('  [sf-coerce] load_ts: datetime/timestamp -> TimestampType (IST->UTC), null zero-datetimes')
     logger.info('  Output cols : %s', df.columns)
     logger.info('END TRANSFORM | dialect=%s', dialect)
     logger.info('=' * 70)

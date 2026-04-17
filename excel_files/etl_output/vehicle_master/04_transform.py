@@ -1,6 +1,6 @@
 """
 04_transform.py  —  vehicle_master  ->  dim_vehicle
-Generated : 2026-04-16 02:58
+Generated : 2026-04-17 15:17
 
 Public API
 ----------
@@ -173,7 +173,7 @@ def apply_transforms(
 
     # CONSTANT: (no src) -> batch_id  # ETL batch identifier
     logger.debug('  [constant ] %s -> batch_id', '')
-    df = df.withColumn('batch_id', F.lit("ETL_VALIDATION"))  # placeholder — real batch ID set by ETL engine)
+    df = df.withColumn('batch_id', F.lit("ETL_VALIDATION")  # placeholder — real batch ID set by ETL engine)
 
     # Reorder to target schema
     _exp  = ['vehicle_key', 'vin', 'model_name', 'variant_name', 'model_year', 'color_name', 'engine_type', 'transmission_type', 'manufacturing_plant', 'base_price_inr', 'launch_date', 'discontinue_date', 'vehicle_status', 'fuel_economy', 'gross_weight_kg', 'seating_capacity', 'origin_country', 'safety_rating', 'warranty_years', 'is_electric', 'created_at', 'updated_at', 'created_by', 'payload_kg', 'load_ts', 'batch_id']
@@ -209,14 +209,14 @@ def apply_transforms(
         logger.debug('  [sf-coerce] gross_weight_kg: decimal/numeric -> DoubleType')
         df = df.withColumn('safety_rating', F.col('safety_rating').cast(DoubleType()))
         logger.debug('  [sf-coerce] safety_rating: decimal/numeric -> DoubleType')
-        df = df.withColumn('created_at', F.when(F.col('created_at').cast(StringType()).startswith('0000-00-00'), F.lit(None)).otherwise(F.col('created_at').cast(TimestampType())))
-        logger.debug('  [sf-coerce] created_at: datetime/timestamp -> TimestampType, null zero-datetimes')
-        df = df.withColumn('updated_at', F.when(F.col('updated_at').cast(StringType()).startswith('0000-00-00'), F.lit(None)).otherwise(F.col('updated_at').cast(TimestampType())))
-        logger.debug('  [sf-coerce] updated_at: datetime/timestamp -> TimestampType, null zero-datetimes')
+        df = df.withColumn('created_at', F.when(F.col('created_at').cast(StringType()).startswith('0000-00-00'), F.lit(None)).otherwise(F.to_utc_timestamp(F.col('created_at').cast(TimestampType()), 'Asia/Kolkata')))
+        logger.debug('  [sf-coerce] created_at: datetime/timestamp -> TimestampType (IST->UTC), null zero-datetimes')
+        df = df.withColumn('updated_at', F.when(F.col('updated_at').cast(StringType()).startswith('0000-00-00'), F.lit(None)).otherwise(F.to_utc_timestamp(F.col('updated_at').cast(TimestampType()), 'Asia/Kolkata')))
+        logger.debug('  [sf-coerce] updated_at: datetime/timestamp -> TimestampType (IST->UTC), null zero-datetimes')
         df = df.withColumn('payload_kg', F.col('payload_kg').cast(DoubleType()))
         logger.debug('  [sf-coerce] payload_kg: decimal/numeric -> DoubleType')
-        df = df.withColumn('load_ts', F.when(F.col('load_ts').cast(StringType()).startswith('0000-00-00'), F.lit(None)).otherwise(F.col('load_ts').cast(TimestampType())))
-        logger.debug('  [sf-coerce] load_ts: datetime/timestamp -> TimestampType, null zero-datetimes')
+        df = df.withColumn('load_ts', F.when(F.col('load_ts').cast(StringType()).startswith('0000-00-00'), F.lit(None)).otherwise(F.to_utc_timestamp(F.col('load_ts').cast(TimestampType()), 'Asia/Kolkata')))
+        logger.debug('  [sf-coerce] load_ts: datetime/timestamp -> TimestampType (IST->UTC), null zero-datetimes')
     logger.info('  Output cols : %s', df.columns)
     logger.info('END TRANSFORM | dialect=%s', dialect)
     logger.info('=' * 70)

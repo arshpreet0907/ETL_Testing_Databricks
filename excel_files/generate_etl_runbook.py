@@ -3,14 +3,14 @@ generate_etl_runbook.py
 -----------------------
 Reads JSON from excel_schema_parser.py and generates per-table:
   01_create_source_table.sql   -- MySQL
-  02_create_target_ms.sql      -- MySQL
   02_create_target_sf.sql      -- Snowflake
   03_extract_source.sql        -- MySQL
   04_transform.py              -- PySpark
-  05_extract_target_ms.sql     -- MySQL
   05_extract_target_sf.sql     -- Snowflake
   06_pipeline_log.md
 Plus 00_summary.md at the top level.
+
+Note: MySQL target files (create_target_ms, extract_target_ms) have been removed.
 
 Usage:
     python generate_etl_runbook.py
@@ -953,15 +953,19 @@ def _build_dialect_coercion_block(tgt_col_types: dict[str, str]) -> list[str]:
                 f"    logger.debug('  [sf-coerce] {col}: date -> null zero-dates')"
             )
 
-        elif base in ("datetime", "timestamp"):
+        elif base in ("datetime", "timestamp", "timestamp_ntz"):
             lines.append(
                 f"    df = df.withColumn('{col}',"
                 f" F.when(F.col('{col}').cast(StringType()).startswith('0000-00-00'),"
-                f" F.lit(None)).otherwise(F.col('{col}').cast(TimestampType())))"
+                f" F.lit(None)).otherwise(F.to_utc_timestamp(F.col('{col}').cast(TimestampType()), 'Asia/Kolkata')))"
             )
+
             lines.append(
-                f"    logger.debug('  [sf-coerce] {col}: datetime/timestamp -> TimestampType, null zero-datetimes')"
+
+                f"    logger.debug('  [sf-coerce] {col}: datetime/timestamp -> TimestampType (IST->UTC), null zero-datetimes')"
+
             )
+
 
         elif base == "time":
             lines.append(
@@ -1369,68 +1373,57 @@ def build_pipeline_log(spec: dict, sheet_name: str) -> str:
     return "\n".join(lines)
 
 
-# ── SUMMARY ────────────────────────────────────────────────────────────────
-
 def build_summary(data: dict) -> str:
+    """Build the 00_summary.md overview document."""
+    from datetime import datetime
     tables = data["tables"]
+    now = datetime.now().strftime("%Y-%m-%d %H:%M")
     lines = [
-        f"# ETL Runbook -- Summary",
-        f"",
-        f"> Generated : {datetime.now():%Y-%m-%d %H:%M}",
-        f"> Tables    : {len(tables)}",
-        f"",
-        f"## Files Generated Per Table",
-        f"",
-        f"| File | Purpose | Dialect |",
-        f"|------|---------|---------||",
-        f"| `01_create_source_table.sql` | Source CREATE TABLE           | MySQL |",
-        f"| `02_create_target_ms.sql`    | Target CREATE TABLE           | MySQL |",
-        f"| `02_create_target_sf.sql`    | Target CREATE TABLE           | Snowflake |",
-        f"| `03_extract_source.sql`      | Source extraction SELECT      | MySQL |",
-        f"| `04_transform.py`            | PySpark column transforms     | Python |",
-        f"| `05_extract_target_ms.sql`   | Target SELECT for actual data | MySQL |",
-        f"| `05_extract_target_sf.sql`   | Target SELECT for actual data | Snowflake |",
-        f"| `06_pipeline_log.md`         | Full per-table runbook        | — |",
-        f"",
-        f"---",
-        f"",
-        f"## Tables",
-        f"",
-        f"| Sheet | Source | Target | Src Cols | Tgt Cols | Joins | Drops | Derived | Constants |",
-        f"|-------|--------|--------|----------|----------|-------|-------|---------|-----------|",
+        "# ETL Runbook -- Summary", "",
+        f"> Generated : {now}",
+        f"> Tables    : {len(tables)}", "",
+        "## Files Generated Per Table", "",
+        "| File | Purpose | Dialect |",
+        "|------|---------|---------||",
+        "| `01_create_source_table.sql` | Source CREATE TABLE           | MySQL |",
+        "| `02_create_target_sf.sql`    | Target CREATE TABLE           | Snowflake |",
+        "| `03_extract_source.sql`      | Source extraction SELECT      | MySQL |",
+        "| `04_transform.py`            | PySpark column transforms     | Python |",
+        "| `05_extract_target_sf.sql`   | Target SELECT for actual data | Snowflake |",
+        "| `06_pipeline_log.md`         | Full per-table runbook        | — |",
+        "", "---", "", "## Tables", "",
+        "| Sheet | Source | Target | Src Cols | Tgt Cols | Joins | Drops | Derived | Constants |",
+        "|-------|--------|--------|----------|----------|-------|-------|---------|-----------|",
     ]
-    for sheet, spec in tables.items():
-        ms = spec["column_mappings"]
+    for sheet_name, spec in tables.items():
+        mappings = spec["column_mappings"]
+        src_cols = len([m for m in mappings if m.get("source_columns")])
+        tgt_cols = len([m for m in mappings if m.get("target_column")])
+        joins = len(spec.get("joins", []))
+        drops = len([m for m in mappings if m["transform_type"] == "drop"])
+        derived = len([m for m in mappings if m["transform_type"] == "derived"])
+        constants = len([m for m in mappings if m["transform_type"] == "constant"])
         lines.append(
-            f"| `{sheet}` | `{spec['source_table']}` | `{spec['target_table']}` "
-            f"| {len(spec['source_schema']['columns'])} | {len(spec['target_schema']['columns'])} "
-            f"| {len(spec.get('joins', []))} "
-            f"| {sum(1 for m in ms if m['transform_type']=='drop')} "
-            f"| {sum(1 for m in ms if m['transform_type']=='derived')} "
-            f"| {sum(1 for m in ms if m['transform_type']=='constant')} |"
+            f"| `{sheet_name}` | `{spec['source_table']}` | `{spec['target_table']}` "
+            f"| {src_cols} | {tgt_cols} | {joins} | {drops} | {derived} | {constants} |"
         )
     lines += [
-        f"",
-        f"## Transform type reference",
-        f"",
-        f"| Type | Meaning |",
-        f"|------|---------|",
-        f"| `direct` | Copy column as-is (same name) |",
-        f"| `rename` | Copy column with a new target name |",
-        f"| `cast` | Apply an expression or type conversion |",
-        f"| `derived` | Compute from one or more source/join columns |",
-        f"| `drop` | Exclude column from target entirely |",
-        f"| `constant` | Insert a system-generated value (timestamp, batch ID) |",
-        f"",
-        f"## Join rule syntax (in transform_rule column)",
-        f"",
-        f"```",
-        f"alias.column              -- direct copy from joined table",
-        f"UPPER(alias.col)          -- expression on joined column",
-        f"alias.col1 + alias.col2   -- combine joined columns",
-        f"ROUND(alias.price, 2)     -- numeric expression on joined column",
-        f"```",
-        f"",
+        "", "## Transform type reference", "",
+        "| Type | Meaning |",
+        "|------|---------|",
+        "| `direct` | Copy column as-is (same name) |",
+        "| `rename` | Copy column with a new target name |",
+        "| `cast` | Apply an expression or type conversion |",
+        "| `derived` | Compute from one or more source/join columns |",
+        "| `drop` | Exclude column from target entirely |",
+        "| `constant` | Insert a system-generated value (timestamp, batch ID) |",
+        "", "## Join rule syntax (in transform_rule column)", "",
+        "```",
+        "alias.column              -- direct copy from joined table",
+        "UPPER(alias.col)          -- expression on joined column",
+        "alias.col1 + alias.col2   -- combine joined columns",
+        "ROUND(alias.price, 2)     -- numeric expression on joined column",
+        "```", "",
     ]
     return "\n".join(lines)
 
@@ -1451,11 +1444,9 @@ def generate(schemas_path: str, out_dir: str) -> None:
         folder.mkdir(exist_ok=True)
         files = {
             "01_create_source_table.sql": build_create_source(spec),
-            "02_create_target_ms.sql":    build_create_target(spec, "mysql"),
             "02_create_target_sf.sql":    build_create_target(spec, "snowflake"),
             "03_extract_source.sql":      build_extract_sql(spec),
             "04_transform.py":            build_transform_py(spec, sheet_name, dialect="mysql"),
-            "05_extract_target_ms.sql":   build_extract_target(spec, "mysql"),
             "05_extract_target_sf.sql":   build_extract_target(spec, "snowflake"),
             "06_pipeline_log.md":         build_pipeline_log(spec, sheet_name),
         }
@@ -1464,7 +1455,7 @@ def generate(schemas_path: str, out_dir: str) -> None:
         j = len(spec.get("joins", []))
         print(f"  OK  {sheet_name}/  ({len(spec['column_mappings'])} mappings{f'  [{j} join(s)]' if j else ''})")
 
-    print(f"\n  Done. {len(tables)*8+1} files -> {out_dir}/")
+    print(f"\n  Done. {len(tables)*6+1} files -> {out_dir}/")
 
 
 def main(schemas_json: str, out: str) -> int:

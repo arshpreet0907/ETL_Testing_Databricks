@@ -2,7 +2,7 @@
 -- STEP 5 : EXTRACT TARGET  |  target: dim_parts
 -- ============================================================
 -- Dialect   : Snowflake
--- Generated : 2026-04-16 02:58
+-- Generated : 2026-04-17 15:17
 --
 -- Simple SELECT of all target columns for comparison against
 -- the transformed source data (04_transform.py output).
