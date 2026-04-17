@@ -2,8 +2,8 @@
 *.md
 __pycache__
 *.drawio
-output/*.json
-output/*.csv
-output/*.schema.json
+output/*/*.json
+output/*/*.csv
+output/*/*.schema.json
 jars/*
 

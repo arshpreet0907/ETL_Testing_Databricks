@@ -19,7 +19,7 @@
 # Find it: top-right corner of Databricks UI → your email
 # Replace <your-username> below with your actual username/email
 
-DATABRICKS_USERNAME = "<your-username>"  # e.g. "arshpreet.singh@example.com"
+DATABRICKS_USERNAME = "arshpreet0907singh@gmail.com"  # e.g. "arshpreet.singh@example.com"
 REPO_NAME = "ETL_Testing_Databricks"
 
 # ── Table to validate ─────────────────────────────────────────

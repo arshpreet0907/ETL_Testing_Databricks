@@ -112,7 +112,7 @@ def get_data_from_snowflake(
 
     df = (
         spark.read
-        .format("net.snowflake.spark.snowflake")
+        .format("snowflake")  # [SERVERLESS] use 'snowflake' instead of 'net.snowflake.spark.snowflake'
         .options(**sf_options)
         .option("query", query)
         .load()

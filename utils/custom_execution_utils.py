@@ -11,7 +11,7 @@ import os
 from typing import Literal, Optional, Set
 
 from utils.auto_config import build_filter_for_query
-from utils.connections.target_connection import get_target_connection, get_snowflake_jdbc_opts
+from utils.connections.target_connection import get_target_connection
 from utils.compare import compare_and_report
 from utils.get_data import get_data_from_storage, get_data_from_snowflake
 from utils.logger import get_logger
@@ -141,16 +141,19 @@ def step_3_5_verify_target_schema(spark, ctx: dict) -> bool:
     logger.info("=" * 60)
 
     config = ctx["config"]
-    jdbc_opts = get_snowflake_jdbc_opts()
+    sf_opts = get_target_connection(mode="snowflake")
+
+    # Fall back to Snowflake connection database if DDL didn't specify one
+    target_database = config.get("target_database") or sf_opts.get("sfDatabase")
 
     passed = verify_schema_from_ddl(
         spark=spark,
-        jdbc_opts=jdbc_opts,
+        jdbc_opts=sf_opts,
         ddl_file=ctx["target_ddl"],
-        database=config.get("target_database"),
+        database=target_database,
         table=config.get("target_table"),
         dialect="snowflake",
-        schema=jdbc_opts.get("sfSchema", "PUBLIC"),
+        schema=sf_opts.get("sfSchema", "PUBLIC"),
     )
 
     if not passed:

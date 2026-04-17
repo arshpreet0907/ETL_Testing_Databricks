@@ -166,12 +166,12 @@ def _parse_ddl_columns(ddl_path: str) -> Dict[str, str]:
 
 def _fetch_snowflake_schema(
     spark: SparkSession,
-    jdbc_opts: dict,
+    sf_opts: dict,
     database_name: str,
     schema_name: str,
     table_name: str,
 ) -> Dict[str, str]:
-    """Query INFORMATION_SCHEMA.COLUMNS on Snowflake via JDBC."""
+    """Query INFORMATION_SCHEMA.COLUMNS on Snowflake via native connector."""
     info_schema = f"{database_name.upper()}.INFORMATION_SCHEMA"
 
     query = (
@@ -185,9 +185,10 @@ def _fetch_snowflake_schema(
 
     logger.info("Snowflake schema query: %s", query)
 
+    # [SERVERLESS] Use 'snowflake' format instead of 'jdbc' (jdbc not supported on serverless)
     rows = (
-        spark.read.format("jdbc")
-        .options(**jdbc_opts)
+        spark.read.format("snowflake")
+        .options(**sf_opts)
         .option("query", query)
         .load()
         .collect()
