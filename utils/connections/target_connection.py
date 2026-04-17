@@ -140,8 +140,10 @@ def _build_snowflake_connector_opts() -> dict:
     if _SF_DIRECT_CONFIG:
         account = _SF_DIRECT_CONFIG["sfAccount"]
         database = _SF_DIRECT_CONFIG["sfDatabase"]
+        sf_url = f"{account}.snowflakecomputing.com"
         opts = {
-            "sfURL": f"{account}.snowflakecomputing.com",
+            "sfURL": sf_url,
+            "url": f"https://{sf_url}", # [SERVERLESS]
             "sfUser": _SF_DIRECT_CONFIG["sfUser"],
             "sfPassword": _SF_DIRECT_CONFIG["sfPassword"],
             "sfDatabase": database,
@@ -161,6 +163,7 @@ def _build_snowflake_connector_opts() -> dict:
 
     opts = {
         "sfURL": f"{account}.snowflakecomputing.com",
+        "url": f"https://{account}.snowflakecomputing.com",  # [SERVERLESS]
         "sfUser": dbutils.secrets.get(scope, "sf-user"),
         "sfPassword": dbutils.secrets.get(scope, "sf-password"),
         "sfDatabase": database,

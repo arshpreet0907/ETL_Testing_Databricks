@@ -193,10 +193,13 @@ def step_5_compare(spark, transformed_df, target_df, ctx: dict) -> int:
 
     compare_cols = ctx["compare_cols"]
     if compare_cols is None:
-        all_cols = set(transformed_df.columns) & set(target_df.columns)
-        compare_cols = sorted(
-            all_cols - set(ctx["primary_keys"]) - set(ctx["exclude_cols"] or [])
-        )
+        # Case-insensitive column matching (Snowflake returns UPPERCASE)
+        src_cols_lower = {c.lower() for c in transformed_df.columns}
+        tgt_cols_lower = {c.lower() for c in target_df.columns}
+        common_lower = src_cols_lower & tgt_cols_lower
+        pk_lower = {pk.lower() for pk in ctx["primary_keys"]}
+        exc_lower = {e.lower() for e in (ctx["exclude_cols"] or [])}
+        compare_cols = sorted(common_lower - pk_lower - exc_lower)
         logger.info("Auto-detected compare columns: %s", compare_cols)
 
     exit_code = compare_and_report(
