@@ -26,9 +26,12 @@ REPO_NAME = "ETL_Testing_Databricks"
 TABLE_NAME = "warranty_claims"
 
 # ── Source file paths (Volumes) ───────────────────────────────
-SOURCE_CSV_PATH    = f"/Volumes/etl_testing/raw_data/source_files/{TABLE_NAME}/source_raw.csv"
-SOURCE_SCHEMA_JSON = f"/Volumes/etl_testing/raw_data/source_files/{TABLE_NAME}/source_raw.schema.json"
-SOURCE_DB_SCHEMA_JSON=f"/Volumes/etl_testing/raw_data/source_files/{TABLE_NAME}/source_db_schema.json"
+BASE_SOURCE_PATH=f"/Volumes/etl_testing/raw_data/source_files/{TABLE_NAME}/"
+BASE_SOURCE_PATH_SUB="xl"
+
+SOURCE_CSV_PATH    = BASE_SOURCE_PATH+BASE_SOURCE_PATH_SUB+"/source_raw.csv"
+SOURCE_SCHEMA_JSON = BASE_SOURCE_PATH+BASE_SOURCE_PATH_SUB+"/source_raw.schema.json"
+SOURCE_DB_SCHEMA_JSON=BASE_SOURCE_PATH+BASE_SOURCE_PATH_SUB+"/source_db_schema.json"
 # ── Output path (writable — NOT inside Repos) ────────────────
 OUTPUT_BASE = f"/Volumes/etl_testing/raw_data/source_files/output"
 
@@ -112,7 +115,8 @@ logger = get_logger("databricks_runner")
 config = get_table_config(TABLE_NAME, target_mode="snowflake")
 
 # Override output dir to writable location
-OUTPUT_DIR = os.path.join(OUTPUT_BASE, TABLE_NAME)
+
+OUTPUT_DIR = os.path.join(OUTPUT_BASE, TABLE_NAME,BASE_SOURCE_PATH_SUB)
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 REPORT_CSV = os.path.join(OUTPUT_DIR, "diff_report.csv")
 
