@@ -15,6 +15,15 @@
 # CELL 1: CONFIGURATION
 # ═══════════════════════════════════════════════════════════════
 
+import logging, time as _time
+
+logging.basicConfig(
+    format="[%(asctime)s] %(levelname)-7s %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+    level=logging.INFO,
+)
+_log = logging.getLogger("databricks_runner")
+
 # ── Your Databricks username (for Repos path) ─────────────────
 # Find it: top-right corner of Databricks UI → your email
 # Replace <your-username> below with your actual username/email
@@ -45,11 +54,11 @@ EXCLUDE_COLS = ["load_ts", "batch_id"]
 PK_FILTER_MODE = "full"
 DATE_WATERMARK_MODE = "full"
 
-print(f"Table        : {TABLE_NAME}")
-print(f"Source CSV   : {SOURCE_CSV_PATH}")
-print(f"Schema JSON  : {SOURCE_SCHEMA_JSON}")
-print(f"Db Schema JSON  : {SOURCE_DB_SCHEMA_JSON}")
-print(f"Output base  : {OUTPUT_BASE}")
+_log.info(f"Table        : {TABLE_NAME}")
+_log.info(f"Source CSV   : {SOURCE_CSV_PATH}")
+_log.info(f"Schema JSON  : {SOURCE_SCHEMA_JSON}")
+_log.info(f"Db Schema JSON  : {SOURCE_DB_SCHEMA_JSON}")
+_log.info(f"Output base  : {OUTPUT_BASE}")
 
 # COMMAND ----------
 
@@ -63,17 +72,17 @@ REPO_PATH = f"/Workspace/Users/{DATABRICKS_USERNAME}/{REPO_NAME}"
 
 # Verify repo exists
 if not os.path.isdir(REPO_PATH):
-    print(f"ERROR: Repo not found at {REPO_PATH}")
-    print(f"  → Check DATABRICKS_USERNAME and REPO_NAME in Cell 1")
-    print(f"  → Make sure you cloned the repo via Repos → Add Repo")
+    _log.error(f"Repo not found at {REPO_PATH}")
+    _log.error(f"  → Check DATABRICKS_USERNAME and REPO_NAME in Cell 1")
+    _log.error(f"  → Make sure you cloned the repo via Repos → Add Repo")
     raise FileNotFoundError(f"Repo not found: {REPO_PATH}")
 
 # Add to Python path so we can import utils/
 if REPO_PATH not in sys.path:
     sys.path.insert(0, REPO_PATH)
 
-print(f"✅ Repo found: {REPO_PATH}")
-print(f"   Contents: {os.listdir(REPO_PATH)}")
+_log.info(f"✅ Repo found: {REPO_PATH}")
+_log.info(f"   Contents: {os.listdir(REPO_PATH)}")
 
 # COMMAND ----------
 
@@ -97,7 +106,7 @@ set_snowflake_config({
     "sfRole":      "ACCOUNTADMIN",
 })
 
-print("✅ Snowflake config set (password from widget)")
+_log.info("✅ Snowflake config set (password from widget)")
 
 # COMMAND ----------
 
@@ -120,13 +129,13 @@ OUTPUT_DIR = os.path.join(OUTPUT_BASE, TABLE_NAME,BASE_SOURCE_PATH_SUB)
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 REPORT_CSV = os.path.join(OUTPUT_DIR, "diff_report.csv")
 
-print(f"✅ Auto-config loaded for: {TABLE_NAME}")
-print(f"   Source table : {config.get('source_table')}")
-print(f"   Target table : {config.get('target_table')}")
-print(f"   Primary Keys : {config['primary_keys']}")
-print(f"   Transform    : {os.path.basename(config['transform_file'])}")
-print(f"   Output dir   : {OUTPUT_DIR}")
-print(f"   Report CSV   : {REPORT_CSV}")
+_log.info(f"✅ Auto-config loaded for: {TABLE_NAME}")
+_log.info(f"   Source table : {config.get('source_table')}")
+_log.info(f"   Target table : {config.get('target_table')}")
+_log.info(f"   Primary Keys : {config['primary_keys']}")
+_log.info(f"   Transform    : {os.path.basename(config['transform_file'])}")
+_log.info(f"   Output dir   : {OUTPUT_DIR}")
+_log.info(f"   Report CSV   : {REPORT_CSV}")
 
 # Build pipeline context
 pipeline_ctx = dict(
@@ -168,11 +177,12 @@ try:
 except Exception:
     pass
 
+_t0 = _time.time()
 passed = step_0_verify_source_schema(spark, pipeline_ctx)
 if passed:
-    print("✅ Source schema verification PASSED")
+    _log.info(f"✅ Source schema verification PASSED ({_time.time()-_t0:.1f}s)")
 else:
-    print("❌ Source schema verification FAILED — check logs above")
+    _log.warning(f"❌ Source schema verification FAILED ({_time.time()-_t0:.1f}s) — check logs above")
 
 # COMMAND ----------
 
@@ -182,8 +192,9 @@ else:
 
 from utils.custom_execution_utils import step_1_extract_source
 
+_t0 = _time.time()
 source_df = step_1_extract_source(spark, pipeline_ctx)
-print(f"✅ Source loaded: {source_df.count()} rows, {len(source_df.columns)} columns")
+_log.info(f"✅ Source loaded: {source_df.count()} rows, {len(source_df.columns)} columns ({_time.time()-_t0:.1f}s)")
 display(source_df.limit(5))
 
 # COMMAND ----------
@@ -194,10 +205,10 @@ display(source_df.limit(5))
 
 from utils.custom_execution_utils import step_2_transform
 
-t0 = time.time()
+_t0 = _time.time()
 transformed_df = step_2_transform(source_df, pipeline_ctx, "snowflake")
-print(f"✅ Transformed: {transformed_df.count()} rows in {time.time()-t0:.1f}s")
-print(f"   Columns: {transformed_df.columns}")
+_log.info(f"✅ Transformed: {transformed_df.count()} rows, {len(transformed_df.columns)} columns ({_time.time()-_t0:.1f}s)")
+_log.info(f"   Columns: {transformed_df.columns}")
 display(transformed_df.limit(5))
 
 # COMMAND ----------
@@ -211,11 +222,12 @@ display(transformed_df.limit(5))
 
 from utils.custom_execution_utils import step_3_5_verify_target_schema
 
+_t0 = _time.time()
 passed = step_3_5_verify_target_schema(spark, pipeline_ctx)
 if passed:
-    print("✅ Target schema verification PASSED")
+    _log.info(f"✅ Target schema verification PASSED ({_time.time()-_t0:.1f}s)")
 else:
-    print("❌ Target schema verification FAILED — check logs above")
+    _log.warning(f"❌ Target schema verification FAILED ({_time.time()-_t0:.1f}s) — check logs above")
 
 # COMMAND ----------
 
@@ -225,8 +237,9 @@ else:
 
 from utils.custom_execution_utils import step_4_extract_target
 
+_t0 = _time.time()
 target_df = step_4_extract_target(spark, pipeline_ctx)
-print(f"✅ Target loaded: {target_df.count()} rows, {len(target_df.columns)} columns")
+_log.info(f"✅ Target loaded: {target_df.count()} rows, {len(target_df.columns)} columns ({_time.time()-_t0:.1f}s)")
 display(target_df.limit(5))
 
 # COMMAND ----------
@@ -237,15 +250,15 @@ display(target_df.limit(5))
 
 from utils.custom_execution_utils import step_5_compare
 
-t0 = time.time()
+_t0 = _time.time()
 exit_code = step_5_compare(spark, transformed_df, target_df, pipeline_ctx)
-elapsed = time.time() - t0
+elapsed = _time.time() - _t0
 
 if exit_code == 0:
-    print(f"\n🟢 PASS — No differences found! ({elapsed:.1f}s)")
+    _log.info(f"🟢 PASS — No differences found! ({elapsed:.1f}s)")
 else:
-    print(f"\n🔴 FAIL — Differences found. ({elapsed:.1f}s)")
-    print(f"   Report: {REPORT_CSV}")
+    _log.warning(f"🔴 FAIL — Differences found. ({elapsed:.1f}s)")
+    _log.warning(f"   Report: {REPORT_CSV}")
 
 # COMMAND ----------
 
@@ -253,13 +266,12 @@ else:
 # CELL 11: VIEW RESULTS
 # ═══════════════════════════════════════════════════════════════
 
-# Show diff report if it exists
 if os.path.isfile(REPORT_CSV):
     report_df = spark.read.option("header", True).csv(REPORT_CSV)
-    print(f"Diff report: {report_df.count()} rows")
+    _log.info(f"Diff report: {report_df.count()} rows")
     display(report_df)
 else:
-    print("No diff report file — either PASS or report path issue")
+    _log.info("No diff report file — either PASS or report path issue")
 
 # COMMAND ----------
 
@@ -272,5 +284,4 @@ else:
 #     transformed_df.unpersist()
 # if target_df.is_cached:
 #     target_df.unpersist()
-print("✅ Cleanup complete (caching disabled on serverless)")
-
+_log.info("✅ Cleanup complete (caching disabled on serverless)")
