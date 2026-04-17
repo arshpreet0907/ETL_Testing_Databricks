@@ -263,38 +263,33 @@ def compare_dataframes(
         source_df.schema, target_df.schema, compare_cols,
     )
 
-    source_norm = _normalise_df(source_df, all_cols, precision_map).cache()
-    target_norm = _normalise_df(target_df, all_cols, precision_map).cache()
+    source_norm = _normalise_df(source_df, all_cols, precision_map)  # [SERVERLESS] .cache() removed
+    target_norm = _normalise_df(target_df, all_cols, precision_map)  # [SERVERLESS] .cache() removed
 
+    # [SERVERLESS] Cache materialisation disabled — uncomment for dedicated cluster
+    # source_norm = source_norm.cache()
+    # target_norm = target_norm.cache()
     # ── Force cache materialisation ───────────────────────────────────
-    # Without this, lazy caching leads to eviction under memory pressure:
-    # 4 large DFs (2 input + 2 normalised) compete for Spark's storage
-    # memory, and the normalised caches get evicted before Phase 2 can
-    # read from them — causing a full recompute (~40s penalty).
-    #
-    # Sequence:
-    #   1. .count() forces normalisation + storage in the block manager.
-    #   2. Input DFs are released — frees ~50% of storage memory.
-    #   3. Phase 1 and Phase 2 both read from the stable normalised cache.
-    logger.info("Materialising normalised DataFrames into cache...")
+    # Without this, lazy caching leads to eviction under memory pressure.
+    logger.info("Materialising normalised DataFrames...")
     t_cache = time.time()
     _src_n = source_norm.count()
     _tgt_n = target_norm.count()
     logger.info(
-        "Normalised and cached: source=%d rows, target=%d rows (%.2fs)",
+        "Normalised: source=%d rows, target=%d rows (%.2fs)",
         _src_n, _tgt_n, time.time() - t_cache,
     )
 
-    # Release input DF caches — normalised versions are now in memory
-    # and the originals are no longer needed.
-    if source_df.is_cached:
-        source_df.unpersist()
-    if target_df.is_cached:
-        target_df.unpersist()
+    # [SERVERLESS] Unpersist disabled — uncomment for dedicated cluster
+    # if source_df.is_cached:
+    #     source_df.unpersist()
+    # if target_df.is_cached:
+    #     target_df.unpersist()
 
     # ── Strategy dispatch (uncomment one) ─────────────────────────────
     # Normalised DFs are cached and stable (input caches freed above).
     # The finally block unpersists them after the strategy has materialised
+    # [SERVERLESS] Unpersist disabled — uncomment for dedicated cluster
     # its diff_df (.cache() + .count()), so there is no memory leak.
     try:
         # Strategy A: Full outer join — simple, correct, slow for wide/large tables
@@ -306,8 +301,10 @@ def compare_dataframes(
         # Strategy C: Anti + inner joins — middle ground, supports broadcast
         # return _compare_anti_inner(source_norm, target_norm, primary_key_cols, compare_cols)
     finally:
-        source_norm.unpersist()
-        target_norm.unpersist()
+        # [SERVERLESS] Unpersist disabled — uncomment for dedicated cluster
+        # source_norm.unpersist()
+        # target_norm.unpersist()
+        pass
 
 
 # =========================================================================== #
@@ -337,7 +334,9 @@ def _compare_full_outer(
     target_prefixed = _prefix_df(target_norm, _TGT_PREFIX, all_cols)
 
     join_condition = _build_join_condition(pk_cols)
-    joined = source_prefixed.join(target_prefixed, on=join_condition, how="full").cache()
+    joined = source_prefixed.join(target_prefixed, on=join_condition, how="full")
+    # [SERVERLESS] .cache() removed — uncomment for dedicated cluster
+    # joined = joined.cache()
 
     # ── Presence flags ────────────────────────────────────────────────
     first_pk = pk_cols[0]
@@ -394,7 +393,8 @@ def _compare_full_outer(
     # ── Short-circuit if PASS ─────────────────────────────────────────
     if missing_count == 0 and extra_count == 0 and value_mismatch_count == 0:
         logger.info("No differences found — skipping diff DataFrame creation")
-        joined.unpersist()
+        # [SERVERLESS] joined.unpersist() removed — uncomment for dedicated cluster
+        # joined.unpersist()
         return _empty_diff_df(), source_row_count, target_row_count, matched_row_count, 0
 
     # ── Lazy filters for three categories ─────────────────────────────
@@ -441,14 +441,14 @@ def _compare_full_outer(
     diff_df = diff_missing.union(diff_extra).union(diff_values)
     total_diff_count = missing_count + extra_count + value_mismatch_count
 
-    # Cache diff_df while joined is still cached — materialises from cache
-    # (fast).  Without this, the reporter would recompute the entire join
-    # from scratch because joined.unpersist() releases the join cache below.
-    diff_df = diff_df.coalesce(2).cache()
-    diff_df.count()  # force materialisation — reads from joined cache
+    # [SERVERLESS] .cache() removed — uncomment for dedicated cluster
+    # diff_df = diff_df.coalesce(2).cache()
+    # diff_df.count()  # force materialisation
+    diff_df = diff_df.coalesce(2)
 
     logger.info("Total differences to report: %d", total_diff_count)
-    joined.unpersist()
+    # [SERVERLESS] joined.unpersist() removed — uncomment for dedicated cluster
+    # joined.unpersist()
 
     return diff_df, source_row_count, target_row_count, matched_row_count, total_diff_count
 
@@ -500,7 +500,9 @@ def _compare_hash(
     target_slim = _prefix_df(target_hashed.select(*slim_cols), _TGT_PREFIX, slim_cols)
 
     join_condition = _build_join_condition(pk_cols)
-    slim_joined = source_slim.join(target_slim, on=join_condition, how="full").cache()
+    slim_joined = source_slim.join(target_slim, on=join_condition, how="full")
+    # [SERVERLESS] .cache() removed — uncomment for dedicated cluster
+    # slim_joined = slim_joined.cache()
 
     # ── Presence flags + single aggregation ───────────────────────────
     first_pk = pk_cols[0]
@@ -546,7 +548,8 @@ def _compare_hash(
     # ── Short-circuit if PASS ─────────────────────────────────────────
     if missing_count == 0 and extra_count == 0 and hash_mismatch_count == 0:
         logger.info("No differences found (hash PASS) — skipping detail phase")
-        slim_joined.unpersist()
+        # [SERVERLESS] slim_joined.unpersist() removed — uncomment for dedicated cluster
+        # slim_joined.unpersist()
         return _empty_diff_df(), source_row_count, target_row_count, matched_row_count, 0
 
     total_diff_count = missing_count + extra_count + hash_mismatch_count
@@ -580,13 +583,13 @@ def _compare_hash(
     # Spark parallelises it across spark.default.parallelism partitions,
     # each needing a Python worker.  Under memory pressure this causes
     # "Python worker failed to connect back" SocketTimeoutExceptions.
-    diff_df = diff_df.coalesce(1).cache()
-    # Skip .count() — we already know the exact count from Phase 2.
-    # Calling .count() here would trigger an unnecessary Spark action
-    # that spawns Python workers and can fail under resource pressure.
+    # [SERVERLESS] .cache() removed — uncomment for dedicated cluster
+    # diff_df = diff_df.coalesce(1).cache()
+    diff_df = diff_df.coalesce(1)
 
     logger.info("Total differences to report: %d", total_diff_count)
-    slim_joined.unpersist()
+    # [SERVERLESS] slim_joined.unpersist() removed — uncomment for dedicated cluster
+    # slim_joined.unpersist()
 
     end = time.time() - start
     logger.info("Phase 2 time: %.2fs", end)
@@ -639,7 +642,9 @@ def _compare_anti_inner(
     join_condition = _build_join_condition(pk_cols)
     in_both = source_prefixed.join(
         target_prefixed, on=join_condition, how="inner",
-    ).cache()
+    )
+    # [SERVERLESS] .cache() removed — uncomment for dedicated cluster
+    # in_both = in_both.cache()
 
     # ── Counts ────────────────────────────────────────────────────────
     missing_count = missing_raw.count()
@@ -680,7 +685,8 @@ def _compare_anti_inner(
     # ── Short-circuit if PASS ─────────────────────────────────────────
     if missing_count == 0 and extra_count == 0 and value_mismatch_count == 0:
         logger.info("No differences found — skipping diff DataFrame creation")
-        in_both.unpersist()
+        # [SERVERLESS] in_both.unpersist() removed — uncomment for dedicated cluster
+        # in_both.unpersist()
         return _empty_diff_df(), source_row_count, target_row_count, matched_row_count, 0
 
     # ── Explode missing / extra ───────────────────────────────────────
@@ -730,12 +736,14 @@ def _compare_anti_inner(
     diff_df = diff_missing.union(diff_extra).union(diff_values)
     total_diff_count = missing_count + extra_count + value_mismatch_count
 
-    # Cache diff_df while in_both is still cached — materialises fast.
-    diff_df = diff_df.coalesce(2).cache()
-    diff_df.count()  # force materialisation — reads from in_both cache
+    # [SERVERLESS] .cache() removed — uncomment for dedicated cluster
+    # diff_df = diff_df.coalesce(2).cache()
+    # diff_df.count()  # force materialisation
+    diff_df = diff_df.coalesce(2)
 
     logger.info("Total differences to report: %d", total_diff_count)
-    in_both.unpersist()
+    # [SERVERLESS] in_both.unpersist() removed — uncomment for dedicated cluster
+    # in_both.unpersist()
 
     return diff_df, source_row_count, target_row_count, matched_row_count, total_diff_count
 

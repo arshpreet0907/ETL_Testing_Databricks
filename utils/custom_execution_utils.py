@@ -50,20 +50,23 @@ def resolve_query(query: str, query_file: str, query_type: str) -> str:
 
 def step_0_verify_source_schema(spark, ctx: dict) -> bool:
     """
-    Step 0: Verify source schema using .schema.json vs DDL.
-    On Databricks, source is a CSV — no live MySQL connection.
+    Step 0: Verify source schema — compare source_raw.schema.json (from DDL)
+    against the source DDL file.
+
+    source_raw.schema.json is generated from the source DDL and represents
+    the actual live source table structure.
     """
     if not ctx["verify_schema"] or not ctx["source_ddl"]:
         return True
 
     logger.info("=" * 60)
-    logger.info("STEP 0: Verify Source Schema (JSON vs DDL)")
+    logger.info("STEP 0: Verify Source Schema (DDL-based JSON vs DDL)")
     logger.info("=" * 60)
 
-    schema_json_path = ctx.get("source_schema_json")
+    schema_json_path = ctx.get("source_db_schema_json")
     if not schema_json_path:
-        logger.warning("No source_schema_json path in context — skipping source schema check")
-        return True
+        logger.warning("No source_db_schema_json path in context — error in source schema check")
+        return False
 
     passed = verify_schema_from_json_file(
         schema_json_path=schema_json_path,
@@ -82,13 +85,15 @@ def step_0_verify_source_schema(spark, ctx: dict) -> bool:
 def step_1_extract_source(spark, ctx: dict):
     """
     Step 1: Load source data from storage CSV (DBFS/Volumes).
-    On Databricks, source is a pre-uploaded raw CSV with .schema.json.
+    Uses source_extracted_raw.schema.json (schema of the extracted CSV,
+    which includes join columns and excludes dropped columns).
     """
     logger.info("=" * 60)
     logger.info("STEP 1: Load Source Data from Storage")
     logger.info("=" * 60)
 
     source_csv_path = ctx["source_csv_path"]
+    # Use the extracted CSV schema (not the DDL-based one) for type inference
     schema_json_path = ctx.get("source_schema_json")
 
     source_df = get_data_from_storage(spark, source_csv_path, schema_json_path)
@@ -112,15 +117,15 @@ def step_2_transform(source_df, ctx: dict, target_mode: str = "snowflake"):
         target_mode=target_mode,
     )
 
-    # Cache transformed_df for step 5 (compare)
-    transformed_df.cache()
-    row_count = transformed_df.count()  # Materialize cache
-    logger.info("Transformed DataFrame cached: %d rows", row_count)
+    # [SERVERLESS] Cache disabled — uncomment for dedicated cluster
+    # transformed_df.cache()
+    row_count = transformed_df.count()
+    logger.info("Transformed DataFrame: %d rows", row_count)
 
-    # Unpersist raw source — no longer needed after transform is cached
-    if source_df.is_cached:
-        source_df.unpersist()
-        logger.info("Source DataFrame unpersisted (raw cache released)")
+    # [SERVERLESS] Unpersist disabled — uncomment for dedicated cluster
+    # if source_df.is_cached:
+    #     source_df.unpersist()
+    #     logger.info("Source DataFrame unpersisted (raw cache released)")
 
     logger.info("Step 2 complete.")
     return transformed_df

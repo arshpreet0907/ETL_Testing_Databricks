@@ -36,14 +36,17 @@ def save_dataframe_as_csv(df: DataFrame, file_path: str) -> None:
     col_count = len(df.columns)
     row_count = 0
 
-    is_cached = df.is_cached
-    if is_cached:
-        df.coalesce(1).write.mode("overwrite").option("header", "true").option("nullValue", "").csv(tmp_dir)
-    else:
-        df_cached = df.coalesce(1).cache()
-        row_count = df_cached.count()
-        df_cached.write.mode("overwrite").option("header", "true").option("nullValue", "").csv(tmp_dir)
-        df_cached.unpersist()
+    # [SERVERLESS] Cache logic disabled — always write without caching
+    # To re-enable caching on dedicated cluster, restore the is_cached branch:
+    # is_cached = df.is_cached
+    # if is_cached:
+    #     df.coalesce(1).write.mode("overwrite").option("header", "true").option("nullValue", "").csv(tmp_dir)
+    # else:
+    #     df_cached = df.coalesce(1).cache()
+    #     row_count = df_cached.count()
+    #     df_cached.write.mode("overwrite").option("header", "true").option("nullValue", "").csv(tmp_dir)
+    #     df_cached.unpersist()
+    df.coalesce(1).write.mode("overwrite").option("header", "true").option("nullValue", "").csv(tmp_dir)
 
     # Locate the single part file
     part_files = glob.glob(os.path.join(tmp_dir, "part-*.csv"))
@@ -62,9 +65,9 @@ def save_dataframe_as_csv(df: DataFrame, file_path: str) -> None:
 
     shutil.move(part_files[0], file_path)
 
-    if is_cached:
-        with open(file_path, "r", encoding="utf-8") as f:
-            row_count = max(sum(1 for _ in f) - 1, 0)
+    # Count rows from file since we didn't cache
+    with open(file_path, "r", encoding="utf-8") as f:
+        row_count = max(sum(1 for _ in f) - 1, 0)
 
     logger.info("CSV saved: %s (%d rows, %d columns)", file_path, row_count, col_count)
 

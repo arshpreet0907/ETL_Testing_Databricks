@@ -28,7 +28,7 @@ TABLE_NAME = "warranty_claims"
 # ── Source file paths (Volumes) ───────────────────────────────
 SOURCE_CSV_PATH    = f"/Volumes/etl_testing/raw_data/source_files/{TABLE_NAME}/source_raw.csv"
 SOURCE_SCHEMA_JSON = f"/Volumes/etl_testing/raw_data/source_files/{TABLE_NAME}/source_raw.schema.json"
-
+SOURCE_DB_SCHEMA_JSON=f"/Volumes/etl_testing/raw_data/source_files/{TABLE_NAME}/source_db_schema.json"
 # ── Output path (writable — NOT inside Repos) ────────────────
 OUTPUT_BASE = f"/Volumes/etl_testing/raw_data/source_files/output"
 
@@ -45,6 +45,7 @@ DATE_WATERMARK_MODE = "full"
 print(f"Table        : {TABLE_NAME}")
 print(f"Source CSV   : {SOURCE_CSV_PATH}")
 print(f"Schema JSON  : {SOURCE_SCHEMA_JSON}")
+print(f"Db Schema JSON  : {SOURCE_DB_SCHEMA_JSON}")
 print(f"Output base  : {OUTPUT_BASE}")
 
 # COMMAND ----------
@@ -143,6 +144,7 @@ pipeline_ctx = dict(
     target_filter={"where_clause": "", "description": "full load (no filters)"},
     source_csv_path=SOURCE_CSV_PATH,
     source_schema_json=SOURCE_SCHEMA_JSON,
+    source_db_schema_json=SOURCE_DB_SCHEMA_JSON
 )
 
 # COMMAND ----------
@@ -153,8 +155,14 @@ pipeline_ctx = dict(
 
 from utils.custom_execution_utils import step_0_verify_source_schema
 
-spark.conf.set("spark.sql.debug.maxToStringFields", 500)
-spark.conf.set("spark.sql.legacy.timeParserPolicy", "LEGACY")
+try:
+    spark.conf.set("spark.sql.debug.maxToStringFields", 500)
+except Exception:
+    pass  # Not available in newer Spark/DBR versions
+try:
+    spark.conf.set("spark.sql.legacy.timeParserPolicy", "LEGACY")
+except Exception:
+    pass
 
 passed = step_0_verify_source_schema(spark, pipeline_ctx)
 if passed:

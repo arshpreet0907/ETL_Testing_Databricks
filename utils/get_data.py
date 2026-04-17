@@ -60,15 +60,24 @@ def get_data_from_storage(
     except FileNotFoundError:
         logger.warning("No schema file found at %s — using inferSchema", schema_json_path)
 
-    # Read CSV
+    # Read CSV — read with inferSchema first, then cast using schema
+    # (workaround for PySpark 3.5 bug where .schema() + .csv() + .cache() fails)
     reader = spark.read.option("header", True).option("nullValue", "")
     if schema:
-        df = reader.schema(schema).csv(csv_path)
+        # Read with inferred types first, then select with proper casts
+        df = reader.option("inferSchema", True).csv(csv_path)
+        from pyspark.sql.functions import col
+        cast_exprs = []
+        for field in schema.fields:
+            if field.name in df.columns:
+                cast_exprs.append(col(field.name).cast(field.dataType).alias(field.name))
+        # Keep only columns present in schema
+        df = df.select(cast_exprs)
     else:
         df = reader.option("inferSchema", True).csv(csv_path)
 
-    # Cache and materialize
-    df.cache()
+    # [SERVERLESS] Cache disabled — uncomment for dedicated cluster
+    # df.cache()
     start_time = time.time()
     row_count = df.count()
     load_time = time.time() - start_time
@@ -109,19 +118,16 @@ def get_data_from_snowflake(
         .load()
     )
 
-    # Cache and materialize
-    df.cache()
+    # [SERVERLESS] Cache disabled — uncomment for dedicated cluster
+    # df.cache()
     start_time = time.time()
-    df.foreach(lambda _: None)  # force full materialization
+    # df.foreach(lambda _: None)  # [SERVERLESS] uncomment for dedicated cluster
+    row_count = df.count()
     extract_time = time.time() - start_time
 
-    count_start = time.time()
-    row_count = df.count()
-    count_time = time.time() - count_start
-
     logger.info(
-        "Snowflake + cache: %.2fs | Row count: %d in %.2fs",
-        extract_time, row_count, count_time,
+        "Snowflake extract: %.2fs | Row count: %d",
+        extract_time, row_count,
     )
     logger.info(
         "Extraction complete: %d rows, %d columns",

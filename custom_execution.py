@@ -82,9 +82,13 @@ EXCLUDE_COLS = ["load_ts", "batch_id"]
 #   SOURCE_CSV_PATH = f"/Volumes/etl_testing/raw_data/source_files/{TABLE_NAME}/source_raw.csv"
 #   SOURCE_SCHEMA_JSON = f"/Volumes/etl_testing/raw_data/source_files/{TABLE_NAME}/source_raw.schema.json"
 
-SOURCE_CSV_PATH = f"/Volumes/etl_testing/raw_data/source_files/{TABLE_NAME}/source_raw.csv"
-SOURCE_SCHEMA_JSON = f"/Volumes/etl_testing/raw_data/source_files/{TABLE_NAME}/source_raw.schema.json"
+SOURCE_CSV_PATH = f"output/{TABLE_NAME}/source_raw.csv"
 
+# Schema of the ACTUAL source table (generated from DDL) — used in step 0 validation
+SOURCE_SCHEMA_JSON = f"output/{TABLE_NAME}/source_raw.schema.json"
+
+
+SOURCE_DB_SCHEMA_JSON = f"output/{TABLE_NAME}/source_db_schema.json"
 
 # ============================================================================
 # SECTION 2 — PK FILTER
@@ -188,7 +192,8 @@ pipeline_ctx = dict(
     target_filter=TARGET_FILTER,
     # Databricks-specific: source data paths
     source_csv_path=SOURCE_CSV_PATH,
-    source_schema_json=SOURCE_SCHEMA_JSON,
+    source_schema_json=SOURCE_SCHEMA_JSON,                  # DDL-based schema for validation
+     source_db_schema_json=SOURCE_DB_SCHEMA_JSON
 )
 
 
@@ -223,8 +228,14 @@ def main() -> int:
         os.makedirs(OUTPUT_DIR, exist_ok=True)
 
         spark = get_spark_session(app_name="ETL_Databricks")
-        spark.conf.set("spark.sql.debug.maxToStringFields", 500)
-        spark.conf.set("spark.sql.legacy.timeParserPolicy", "LEGACY")
+        try:
+            spark.conf.set("spark.sql.debug.maxToStringFields", 500)
+        except Exception:
+            pass
+        try:
+            spark.conf.set("spark.sql.legacy.timeParserPolicy", "LEGACY")
+        except Exception:
+            pass
 
         # Step 0: optional source schema check
         if not step_0_verify_source_schema(spark, pipeline_ctx):
@@ -252,13 +263,13 @@ def main() -> int:
         exit_code = step_5_compare(spark, transformed_df, target_df, pipeline_ctx)
         logger.info("Compare and Report time: %.2fs", time.time() - t0)
 
-        # Cleanup
-        logger.info("Ensuring cached DataFrames are released...")
-        if transformed_df.is_cached:
-            transformed_df.unpersist()
-        if target_df.is_cached:
-            target_df.unpersist()
-        logger.info("Cache cleanup complete.")
+        # [SERVERLESS] Cache cleanup disabled — uncomment for dedicated cluster
+        # logger.info("Ensuring cached DataFrames are released...")
+        # if transformed_df.is_cached:
+        #     transformed_df.unpersist()
+        # if target_df.is_cached:
+        #     target_df.unpersist()
+        # logger.info("Cache cleanup complete.")
 
         elapsed = timedelta(seconds=int(time.time() - start_time))
         minutes = elapsed.seconds // 60
