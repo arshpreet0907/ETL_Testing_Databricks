@@ -1,7 +1,7 @@
 -- ============================================================
 -- Target table : dim_supplier
 -- Dialect      : Snowflake
--- Generated    : 2026-04-19 00:35
+-- Generated    : 2026-04-19 00:43
 -- ============================================================
 
 CREATE TABLE IF NOT EXISTS dim_supplier (

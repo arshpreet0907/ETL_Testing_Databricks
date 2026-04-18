@@ -2,7 +2,7 @@
 -- STEP 3 : EXTRACT  |  source: vehicle_master
 -- ============================================================
 -- Dialect    : MySQL 8+
--- Generated  : 2026-04-19 00:35
+-- Generated  : 2026-04-19 00:43
 --
 -- Columns fetched from main source table (dropped cols excluded).
 -- Excluded (drop): internal_notes
