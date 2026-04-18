@@ -202,10 +202,6 @@ try:
     spark.conf.set("spark.sql.legacy.timeParserPolicy", "LEGACY")
 except Exception:
     pass
-try:
-    spark.conf.set("spark.sql.session.timeZone", "Asia/Kolkata")
-except Exception:
-    pass
 
 _t0 = _time.time()
 passed = step_0_verify_source_schema(spark, pipeline_ctx)

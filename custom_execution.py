@@ -68,7 +68,7 @@ TABLE_NAME = "warranty_claims"  # Available: cost_ledger, employee_master,
                                 # sales_orders, supplier_master,
                                 # vehicle_master, warranty_claims
 
-SUB_PATH = "xxl"                 # Sub-path under output/{TABLE_NAME}/ (e.g. "xl", "xxl")
+SUB_PATH = "xl"                 # Sub-path under output/{TABLE_NAME}/ (e.g. "xl", "xxl")
 target_mode="snowflake"
 VERIFY_SCHEMA = True
 
@@ -232,10 +232,6 @@ def main() -> int:
             pass
         try:
             spark.conf.set("spark.sql.legacy.timeParserPolicy", "LEGACY")
-        except Exception:
-            pass
-        try:
-            spark.conf.set("spark.sql.session.timeZone", "Asia/Kolkata")
         except Exception:
             pass
 
