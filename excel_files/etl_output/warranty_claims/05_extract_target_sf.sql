@@ -2,7 +2,7 @@
 -- STEP 5 : EXTRACT TARGET  |  target: fact_warranty
 -- ============================================================
 -- Dialect   : Snowflake
--- Generated : 2026-04-19 00:02
+-- Generated : 2026-04-19 00:35
 --
 -- Simple SELECT of all target columns for comparison against
 -- the transformed source data (04_transform.py output).

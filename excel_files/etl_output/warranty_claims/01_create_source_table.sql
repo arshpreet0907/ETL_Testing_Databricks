@@ -1,7 +1,7 @@
 -- ============================================================
 -- Source table : warranty_claims
 -- Dialect      : MySQL 8+
--- Generated    : 2026-04-19 00:02
+-- Generated    : 2026-04-19 00:35
 -- ============================================================
 
 CREATE TABLE IF NOT EXISTS warranty_claims (

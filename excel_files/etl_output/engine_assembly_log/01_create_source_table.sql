@@ -1,7 +1,7 @@
 -- ============================================================
 -- Source table : engine_assembly_log
 -- Dialect      : MySQL 8+
--- Generated    : 2026-04-19 00:02
+-- Generated    : 2026-04-19 00:35
 -- ============================================================
 
 CREATE TABLE IF NOT EXISTS engine_assembly_log (

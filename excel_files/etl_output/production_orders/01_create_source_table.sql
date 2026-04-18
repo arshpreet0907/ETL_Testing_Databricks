@@ -1,7 +1,7 @@
 -- ============================================================
 -- Source table : production_orders
 -- Dialect      : MySQL 8+
--- Generated    : 2026-04-19 00:02
+-- Generated    : 2026-04-19 00:35
 -- ============================================================
 
 CREATE TABLE IF NOT EXISTS production_orders (

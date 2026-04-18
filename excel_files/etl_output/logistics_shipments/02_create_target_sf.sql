@@ -1,7 +1,7 @@
 -- ============================================================
 -- Target table : fact_shipment
 -- Dialect      : Snowflake
--- Generated    : 2026-04-19 00:02
+-- Generated    : 2026-04-19 00:35
 -- ============================================================
 
 CREATE TABLE IF NOT EXISTS fact_shipment (

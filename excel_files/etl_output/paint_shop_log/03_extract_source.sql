@@ -2,7 +2,7 @@
 -- STEP 3 : EXTRACT  |  source: paint_shop_log
 -- ============================================================
 -- Dialect    : MySQL 8+
--- Generated  : 2026-04-19 00:02
+-- Generated  : 2026-04-19 00:35
 --
 -- Columns fetched from main source table (dropped cols excluded).
 -- Excluded (drop): primer_batch_no, topcoat_batch_no, clear_coat_batch_no, batch_id

@@ -2,7 +2,7 @@
 -- STEP 3 : EXTRACT  |  source: cost_ledger
 -- ============================================================
 -- Dialect    : MySQL 8+
--- Generated  : 2026-04-19 00:02
+-- Generated  : 2026-04-19 00:35
 --
 -- Columns fetched from main source table (dropped cols excluded).
 -- Excluded (drop): internal_notes
