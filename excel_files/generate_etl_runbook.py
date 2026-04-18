@@ -957,13 +957,10 @@ def _build_dialect_coercion_block(tgt_col_types: dict[str, str]) -> list[str]:
             lines.append(
                 f"    df = df.withColumn('{col}',"
                 f" F.when(F.col('{col}').cast(StringType()).startswith('0000-00-00'),"
-                f" F.lit(None)).otherwise(F.from_utc_timestamp(F.col('{col}').cast(TimestampType()), 'Asia/Kolkata')))"
+                f" F.lit(None)).otherwise(F.col('{col}').cast(TimestampType())))"
             )
-
             lines.append(
-
-                f"    logger.debug('  [sf-coerce] {col}: datetime/timestamp -> TimestampType (UTC->IST), null zero-datetimes')"
-
+                f"    logger.debug('  [sf-coerce] {col}: datetime/timestamp -> TimestampType (no tz shift, MySQL stores local time)')"
             )
 
 

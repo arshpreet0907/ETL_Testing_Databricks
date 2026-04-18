@@ -165,8 +165,8 @@ def generate_report(
     # Sort column counts descending (same order as previous Spark orderBy)
     col_counts = dict(col_counter.most_common())
 
-    # Unpersist diff_df cache — no longer needed after collect
-    diff_df.unpersist()
+    # [SERVERLESS] Unpersist disabled — uncomment for dedicated cluster
+    # diff_df.unpersist()
 
     # ------------------------------------------------------------------ #
     # Print human-readable summary                                        #

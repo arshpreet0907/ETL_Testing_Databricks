@@ -1,20 +1,13 @@
 """
-custom_execution.py (Databricks Version)
------------------------------------------
-ETL validation pipeline for Databricks.
+custom_execution.py (Local Execution)
+--------------------------------------
+ETL validation pipeline — runs locally with PySpark local[*].
 
-Source: Raw CSV from DBFS/Volumes (pre-extracted from MySQL locally)
+Source: Enriched CSV from output/{TABLE_NAME}/{SUB_PATH}/
 Target: Snowflake via native Spark-Snowflake connector
-Output: diff_report.csv only (no transformed or target CSVs)
+Output: diff_report.csv in the same output sub-path
 
-CONFIGURATION
-=============
-On Databricks, configure via widgets (notebook) or edit variables below.
-
-To use as a Databricks notebook:
-  1. Import this file into your Databricks workspace
-  2. Uncomment the widget section in SECTION 0
-  3. Run all cells
+Snowflake credentials are loaded from .env file.
 
 FILTER QUICK REFERENCE
 ======================
@@ -28,7 +21,12 @@ import time
 from datetime import timedelta
 from typing import Literal, Optional, Set
 
+from dotenv import load_dotenv
+
+load_dotenv()  # Load .env for Snowflake credentials
+
 from utils.connections.spark_session import get_spark_session
+from utils.connections.target_connection import set_snowflake_config
 from utils.auto_config import get_table_config, list_available_tables
 from utils.logger import get_logger
 from utils.custom_execution_utils import (
@@ -45,12 +43,18 @@ logger = get_logger(__name__)
 
 
 # ============================================================================
-# SECTION 0 — DATABRICKS WIDGETS (uncomment when running as notebook)
+# SECTION 0 — SNOWFLAKE CREDENTIALS (from .env)
 # ============================================================================
-# dbutils.widgets.text("table_name", "employee_master", "Table Name")
-# dbutils.widgets.dropdown("verify_schema", "True", ["True", "False"], "Verify Schema")
-# TABLE_NAME = dbutils.widgets.get("table_name")
-# VERIFY_SCHEMA = dbutils.widgets.get("verify_schema") == "True"
+
+set_snowflake_config({
+    "sfAccount":   os.getenv("SF_ACCOUNT"),
+    "sfUser":      os.getenv("SF_USER"),
+    "sfPassword":  os.getenv("SF_PASSWORD"),
+    "sfDatabase":  os.getenv("SF_DATABASE"),
+    "sfSchema":    os.getenv("SF_SCHEMA", "PUBLIC"),
+    "sfWarehouse": os.getenv("SF_WAREHOUSE"),
+    "sfRole":      os.getenv("SF_ROLE"),
+})
 
 
 # ============================================================================
@@ -64,6 +68,8 @@ TABLE_NAME = "warranty_claims"  # Available: cost_ledger, employee_master,
                                 # sales_orders, supplier_master,
                                 # vehicle_master, warranty_claims
 
+SUB_PATH = "xxl"                 # Sub-path under output/{TABLE_NAME}/ (e.g. "xl", "xxl")
+target_mode="snowflake"
 VERIFY_SCHEMA = True
 
 COMPARE_COLS = None             # None = auto-detect all non-PK columns
@@ -71,24 +77,16 @@ COMPARE_COLS = None             # None = auto-detect all non-PK columns
 EXCLUDE_COLS = ["load_ts", "batch_id"]
 
 # ┌─────────────────────────────────────────────────────────────────────────┐
-# │ SOURCE DATA PATHS                                                       │
-# │ Path to raw CSV and .schema.json uploaded to DBFS or Volumes.           │
-# │ These are extracted locally from MySQL and uploaded to Databricks.       │
+# │ SOURCE DATA PATHS (local)                                               │
+# │ Source files from output/{TABLE_NAME}/{SUB_PATH}/                        │
+# │   - source_enriched.csv          : enriched source data (with joins)     │
+# │   - source_enriched.schema.json  : schema of enriched CSV               │
+# │   - source_db_schema.json        : original DB schema for validation     │
 # └─────────────────────────────────────────────────────────────────────────┘
-# For DBFS:
-#   SOURCE_CSV_PATH = f"dbfs:/FileStore/etl_testing/raw_source/{TABLE_NAME}/source_raw.csv"
-#   SOURCE_SCHEMA_JSON = f"/dbfs/FileStore/etl_testing/raw_source/{TABLE_NAME}/source_raw.schema.json"
-# For Volumes:
-#   SOURCE_CSV_PATH = f"/Volumes/etl_testing/raw_data/source_files/{TABLE_NAME}/source_raw.csv"
-#   SOURCE_SCHEMA_JSON = f"/Volumes/etl_testing/raw_data/source_files/{TABLE_NAME}/source_raw.schema.json"
 
-SOURCE_CSV_PATH = f"output/{TABLE_NAME}/source_raw.csv"
-
-# Schema of the ACTUAL source table (generated from DDL) — used in step 0 validation
-SOURCE_SCHEMA_JSON = f"output/{TABLE_NAME}/source_raw.schema.json"
-
-
-SOURCE_DB_SCHEMA_JSON = f"output/{TABLE_NAME}/source_db_schema.json"
+SOURCE_CSV_PATH       = f"output/{TABLE_NAME}/{SUB_PATH}/source_raw.csv"
+SOURCE_SCHEMA_JSON    = f"output/{TABLE_NAME}/{SUB_PATH}/source_raw.schema.json"
+SOURCE_DB_SCHEMA_JSON = f"output/{TABLE_NAME}/{SUB_PATH}/source_db_schema.json"
 
 # ============================================================================
 # SECTION 2 — PK FILTER
@@ -96,7 +94,7 @@ SOURCE_DB_SCHEMA_JSON = f"output/{TABLE_NAME}/source_db_schema.json"
 
 PK_FILTER_MODE: Literal["full", "pk_range", "pk_set"] = "full"
 
-PK_RANGE: dict = {"lower": None, "upper": None}
+PK_RANGE: dict = {"lower": 90000000, "upper": 90000004}
 PK_SET: Set = set()
 
 
@@ -121,14 +119,14 @@ _config: dict = {}
 if TABLE_NAME:
     logger.info("Using AUTO-CONFIGURATION for table: %s", TABLE_NAME)
     try:
-        _config = get_table_config(TABLE_NAME, target_mode="snowflake")
+        _config = get_table_config(TABLE_NAME, target_mode=target_mode)
 
         TARGET_QUERY_FILE = _config["target_query_file"]
         TRANSFORM_FILE    = _config["transform_file"]
         PRIMARY_KEYS      = _config["primary_keys"]
         SOURCE_DDL        = _config["source_ddl"]
         TARGET_DDL        = _config["target_ddl"]
-        OUTPUT_DIR        = _config["output_dir"]
+        OUTPUT_DIR        = os.path.join("output", TABLE_NAME, SUB_PATH)
 
         logger.info("Auto-configuration loaded:")
         logger.info("  Source table : %s", _config.get("source_table"))
@@ -175,7 +173,7 @@ logger.info("Target filter: %s", TARGET_FILTER["description"])
 
 pipeline_ctx = dict(
     config=_config,
-    target_mode="snowflake",
+    target_mode=target_mode,
     verify_schema=VERIFY_SCHEMA,
     source_query=None,
     source_query_file=None,  # Not used — source comes from CSV
@@ -217,7 +215,7 @@ def main() -> int:
 
     try:
         logger.info("=" * 60)
-        logger.info("ETL Validation Pipeline (Databricks)")
+        logger.info("ETL Validation Pipeline (Local)")
         logger.info("  Table  : %s", TABLE_NAME)
         logger.info("  Target : snowflake")
         logger.info("  Source : storage CSV")
@@ -245,10 +243,9 @@ def main() -> int:
         # Step 1: load source from storage CSV
         source_df = step_1_extract_source(spark, pipeline_ctx)
 
-        # Step 2: transform (caches result, unpersists raw source)
-        t0 = time.time()
-        transformed_df = step_2_transform(source_df, pipeline_ctx, "snowflake")
-        logger.info("Transform time: %.2fs", time.time() - t0)
+        # Step 2: transform
+        transformed_df = step_2_transform(source_df, pipeline_ctx, target_mode=target_mode)
+        logger.info("Using enriched source CSV — transform step skipped")
 
         # Step 3.5: optional target schema check
         if not step_3_5_verify_target_schema(spark, pipeline_ctx):
@@ -256,6 +253,7 @@ def main() -> int:
             return 2
 
         # Step 4: extract target from Snowflake
+        # Data is cached inside get_data_from_snowflake() to avoid session-null bug
         target_df = step_4_extract_target(spark, pipeline_ctx)
 
         # Step 5: compare & generate diff report

@@ -82,11 +82,29 @@ def step_0_verify_source_schema(spark, ctx: dict) -> bool:
     return True
 
 
+def _apply_filter_to_df(df, filter_dict: dict, label: str = "source"):
+    """
+    Apply a SQL-style where_clause from a filter dict to a Spark DataFrame.
+    Uses spark.sql() via a temp view to leverage the same WHERE syntax.
+    Returns the filtered DataFrame, or the original if no filter applies.
+    """
+    where_clause = (filter_dict or {}).get("where_clause", "")
+    if not where_clause:
+        return df
+
+    view_name = f"__{label}_filter_temp"
+    df.createOrReplaceTempView(view_name)
+    filtered_df = df.sparkSession.sql(f"SELECT * FROM {view_name} WHERE {where_clause}")
+    logger.info("Applied %s filter: %s", label, where_clause)
+    return filtered_df
+
+
 def step_1_extract_source(spark, ctx: dict):
     """
     Step 1: Load source data from storage CSV (DBFS/Volumes).
     Uses source_extracted_raw.schema.json (schema of the extracted CSV,
     which includes join columns and excludes dropped columns).
+    Applies PK and date filters if configured.
     """
     logger.info("=" * 60)
     logger.info("STEP 1: Load Source Data from Storage")
@@ -97,6 +115,10 @@ def step_1_extract_source(spark, ctx: dict):
     schema_json_path = ctx.get("source_schema_json")
 
     source_df = get_data_from_storage(spark, source_csv_path, schema_json_path)
+
+    # Apply PK / date filters to source DataFrame (mirrors target SQL filtering)
+    source_filter = ctx.get("source_filter")
+    source_df = _apply_filter_to_df(source_df, source_filter, label="source")
 
     logger.info("Step 1 complete.")
     return source_df

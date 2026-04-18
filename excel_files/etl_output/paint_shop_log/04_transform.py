@@ -1,6 +1,6 @@
 """
 04_transform.py  —  paint_shop_log  ->  fact_paint
-Generated : 2026-04-17 15:38
+Generated : 2026-04-19 00:02
 
 Public API
 ----------
@@ -211,14 +211,14 @@ def apply_transforms(
     # ── Dialect coercion: MySQL -> Snowflake value fixes ──────────────
     # Input is always MySQL dialect; coercions run only for 'snowflake'.
     if dialect == 'snowflake':
-        df = df.withColumn('process_start_ts', F.when(F.col('process_start_ts').cast(StringType()).startswith('0000-00-00'), F.lit(None)).otherwise(F.from_utc_timestamp(F.col('process_start_ts').cast(TimestampType()), 'Asia/Kolkata')))
-        logger.debug('  [sf-coerce] process_start_ts: datetime/timestamp -> TimestampType (UTC->IST), null zero-datetimes')
-        df = df.withColumn('process_end_ts', F.when(F.col('process_end_ts').cast(StringType()).startswith('0000-00-00'), F.lit(None)).otherwise(F.from_utc_timestamp(F.col('process_end_ts').cast(TimestampType()), 'Asia/Kolkata')))
-        logger.debug('  [sf-coerce] process_end_ts: datetime/timestamp -> TimestampType (UTC->IST), null zero-datetimes')
-        df = df.withColumn('created_at', F.when(F.col('created_at').cast(StringType()).startswith('0000-00-00'), F.lit(None)).otherwise(F.from_utc_timestamp(F.col('created_at').cast(TimestampType()), 'Asia/Kolkata')))
-        logger.debug('  [sf-coerce] created_at: datetime/timestamp -> TimestampType (UTC->IST), null zero-datetimes')
-        df = df.withColumn('load_ts', F.when(F.col('load_ts').cast(StringType()).startswith('0000-00-00'), F.lit(None)).otherwise(F.from_utc_timestamp(F.col('load_ts').cast(TimestampType()), 'Asia/Kolkata')))
-        logger.debug('  [sf-coerce] load_ts: datetime/timestamp -> TimestampType (UTC->IST), null zero-datetimes')
+        df = df.withColumn('process_start_ts', F.when(F.col('process_start_ts').cast(StringType()).startswith('0000-00-00'), F.lit(None)).otherwise(F.col('process_start_ts').cast(TimestampType())))
+        logger.debug('  [sf-coerce] process_start_ts: datetime/timestamp -> TimestampType (no tz shift, MySQL stores local time)')
+        df = df.withColumn('process_end_ts', F.when(F.col('process_end_ts').cast(StringType()).startswith('0000-00-00'), F.lit(None)).otherwise(F.col('process_end_ts').cast(TimestampType())))
+        logger.debug('  [sf-coerce] process_end_ts: datetime/timestamp -> TimestampType (no tz shift, MySQL stores local time)')
+        df = df.withColumn('created_at', F.when(F.col('created_at').cast(StringType()).startswith('0000-00-00'), F.lit(None)).otherwise(F.col('created_at').cast(TimestampType())))
+        logger.debug('  [sf-coerce] created_at: datetime/timestamp -> TimestampType (no tz shift, MySQL stores local time)')
+        df = df.withColumn('load_ts', F.when(F.col('load_ts').cast(StringType()).startswith('0000-00-00'), F.lit(None)).otherwise(F.col('load_ts').cast(TimestampType())))
+        logger.debug('  [sf-coerce] load_ts: datetime/timestamp -> TimestampType (no tz shift, MySQL stores local time)')
         df = df.withColumn('order_date', F.when(F.col('order_date').cast(StringType()).startswith('0000-00-00'), F.lit(None)).otherwise(F.col('order_date')))
         logger.debug('  [sf-coerce] order_date: date -> null zero-dates')
         df = df.withColumn('planned_completion', F.when(F.col('planned_completion').cast(StringType()).startswith('0000-00-00'), F.lit(None)).otherwise(F.col('planned_completion')))

@@ -2,7 +2,7 @@
 -- STEP 3 : EXTRACT  |  source: engine_assembly_log
 -- ============================================================
 -- Dialect    : MySQL 8+
--- Generated  : 2026-04-17 15:38
+-- Generated  : 2026-04-19 00:02
 --
 -- Columns fetched from main source table (dropped cols excluded).
 -- Excluded (drop): batch_id

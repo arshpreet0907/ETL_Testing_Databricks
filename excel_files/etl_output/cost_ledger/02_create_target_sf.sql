@@ -1,7 +1,7 @@
 -- ============================================================
 -- Target table : fact_cost
 -- Dialect      : Snowflake
--- Generated    : 2026-04-17 15:38
+-- Generated    : 2026-04-19 00:02
 -- ============================================================
 
 CREATE TABLE IF NOT EXISTS fact_cost (

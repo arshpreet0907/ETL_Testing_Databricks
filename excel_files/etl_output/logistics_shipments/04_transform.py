@@ -1,6 +1,6 @@
 """
 04_transform.py  —  logistics_shipments  ->  fact_shipment
-Generated : 2026-04-17 15:38
+Generated : 2026-04-19 00:02
 
 Public API
 ----------
@@ -220,10 +220,10 @@ def apply_transforms(
         logger.debug('  [sf-coerce] estimated_arrival: date -> null zero-dates')
         df = df.withColumn('actual_arrival', F.when(F.col('actual_arrival').cast(StringType()).startswith('0000-00-00'), F.lit(None)).otherwise(F.col('actual_arrival')))
         logger.debug('  [sf-coerce] actual_arrival: date -> null zero-dates')
-        df = df.withColumn('created_at', F.when(F.col('created_at').cast(StringType()).startswith('0000-00-00'), F.lit(None)).otherwise(F.from_utc_timestamp(F.col('created_at').cast(TimestampType()), 'Asia/Kolkata')))
-        logger.debug('  [sf-coerce] created_at: datetime/timestamp -> TimestampType (UTC->IST), null zero-datetimes')
-        df = df.withColumn('load_ts', F.when(F.col('load_ts').cast(StringType()).startswith('0000-00-00'), F.lit(None)).otherwise(F.from_utc_timestamp(F.col('load_ts').cast(TimestampType()), 'Asia/Kolkata')))
-        logger.debug('  [sf-coerce] load_ts: datetime/timestamp -> TimestampType (UTC->IST), null zero-datetimes')
+        df = df.withColumn('created_at', F.when(F.col('created_at').cast(StringType()).startswith('0000-00-00'), F.lit(None)).otherwise(F.col('created_at').cast(TimestampType())))
+        logger.debug('  [sf-coerce] created_at: datetime/timestamp -> TimestampType (no tz shift, MySQL stores local time)')
+        df = df.withColumn('load_ts', F.when(F.col('load_ts').cast(StringType()).startswith('0000-00-00'), F.lit(None)).otherwise(F.col('load_ts').cast(TimestampType())))
+        logger.debug('  [sf-coerce] load_ts: datetime/timestamp -> TimestampType (no tz shift, MySQL stores local time)')
     logger.info('  Output cols : %s', df.columns)
     logger.info('END TRANSFORM | dialect=%s', dialect)
     logger.info('=' * 70)

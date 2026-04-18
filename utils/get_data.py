@@ -91,13 +91,22 @@ def get_data_from_storage(
     return df
 
 
+def _is_databricks() -> bool:
+    """Return True if running on Databricks."""
+    return "DATABRICKS_RUNTIME_VERSION" in os.environ
+
+
 def get_data_from_snowflake(
     spark: SparkSession,
     query: str,
     sf_options: dict,
 ) -> DataFrame:
     """
-    Read from Snowflake using native Spark-Snowflake connector.
+    Read from Snowflake.
+
+    On Databricks: uses native Spark-Snowflake connector (no session bug there).
+    Locally: uses snowflake-connector-python + Pandas to avoid the session-null
+    NullPointerException bug with snowflake-jdbc 3.18 + spark-snowflake 3.1.0.
 
     Parameters
     ----------
@@ -107,12 +116,24 @@ def get_data_from_snowflake(
     sf_options : dict
         Snowflake connector options from get_target_connection().
     """
-    logger.info("Extracting data from Snowflake (native connector)")
+    if _is_databricks():
+        return _read_snowflake_spark_connector(spark, query, sf_options)
+    else:
+        return _read_snowflake_python_connector(spark, query, sf_options)
+
+
+def _read_snowflake_spark_connector(
+    spark: SparkSession,
+    query: str,
+    sf_options: dict,
+) -> DataFrame:
+    """Read via native Spark-Snowflake connector (Databricks)."""
+    logger.info("Extracting data from Snowflake (native Spark connector)")
     logger.debug("Query (%d chars): %s", len(query), query[:200])
 
     df = (
         spark.read
-        .format("snowflake")  # [SERVERLESS] use 'snowflake' instead of 'net.snowflake.spark.snowflake'
+        .format("snowflake")
         .options(**sf_options)
         .option("query", query)
         .load()
@@ -121,18 +142,64 @@ def get_data_from_snowflake(
     # [SERVERLESS] Cache disabled — uncomment for dedicated cluster
     # df.cache()
     start_time = time.time()
-    # df.foreach(lambda _: None)  # [SERVERLESS] uncomment for dedicated cluster
     row_count = df.count()
     extract_time = time.time() - start_time
 
-    logger.info(
-        "Snowflake extract: %.2fs | Row count: %d",
-        extract_time, row_count,
-    )
-    logger.info(
-        "Extraction complete: %d rows, %d columns",
-        row_count, len(df.columns),
-    )
+    logger.info("Snowflake extract: %.2fs | Row count: %d", extract_time, row_count)
+    logger.info("Extraction complete: %d rows, %d columns", row_count, len(df.columns))
+    logger.info("Columns: %s", df.columns)
+    return df
+
+
+def _read_snowflake_python_connector(
+    spark: SparkSession,
+    query: str,
+    sf_options: dict,
+) -> DataFrame:
+    """Read via snowflake-connector-python + Pandas (local)."""
+    import snowflake.connector
+
+    logger.info("Extracting data from Snowflake (Python connector → Pandas → Spark)")
+    logger.debug("Query (%d chars): %s", len(query), query[:200])
+
+    # Map Spark-Snowflake connector keys to snowflake-connector-python keys
+    account = sf_options.get("sfURL", "").replace(".snowflakecomputing.com", "")
+    if not account:
+        account = sf_options.get("sfAccount", "")
+
+    conn_params = {
+        "account":   account,
+        "user":      sf_options["sfUser"],
+        "password":  sf_options["sfPassword"],
+        "database":  sf_options["sfDatabase"],
+        "schema":    sf_options.get("sfSchema", "PUBLIC"),
+        "warehouse": sf_options["sfWarehouse"],
+        "role":      sf_options.get("sfRole"),
+    }
+    conn_params = {k: v for k, v in conn_params.items() if v is not None}
+
+    start_time = time.time()
+
+    conn = snowflake.connector.connect(**conn_params)
+    try:
+        cur = conn.cursor()
+        cur.execute(query)
+        pdf = cur.fetch_pandas_all()
+    finally:
+        conn.close()
+
+    extract_time = time.time() - start_time
+
+    logger.info("Snowflake extract: %.2fs | Row count: %d", extract_time, len(pdf))
+
+    # Replace Pandas NaN/NaT with None so Spark sees proper nulls
+    import numpy as np
+    pdf = pdf.replace({np.nan: None})
+    pdf = pdf.where(pdf.notna(), None)
+
+    df = spark.createDataFrame(pdf)
+
+    logger.info("Extraction complete: %d rows, %d columns", len(pdf), len(df.columns))
     logger.info("Columns: %s", df.columns)
 
     return df
