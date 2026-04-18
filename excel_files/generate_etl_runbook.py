@@ -960,7 +960,13 @@ def _build_dialect_coercion_block(tgt_col_types: dict[str, str]) -> list[str]:
                 f" F.lit(None)).otherwise(F.col('{col}').cast(TimestampType())))"
             )
             lines.append(
-                f"    logger.debug('  [sf-coerce] {col}: datetime/timestamp -> TimestampType')"
+                f"    # Source timestamps are IST (from MySQL); Snowflake stores them converted to IST representation"
+            )
+            lines.append(
+                f"    df = df.withColumn('{col}', F.from_utc_timestamp(F.col('{col}'), 'Asia/Kolkata'))"
+            )
+            lines.append(
+                f"    logger.debug('  [sf-coerce] {col}: datetime/timestamp -> TimestampType (IST adjusted)')"
             )
 
 

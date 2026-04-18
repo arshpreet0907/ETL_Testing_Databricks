@@ -1,6 +1,6 @@
 """
 04_transform.py  —  sales_orders  ->  fact_sales
-Generated : 2026-04-19 00:43
+Generated : 2026-04-19 01:14
 
 Public API
 ----------
@@ -225,9 +225,13 @@ def apply_transforms(
         df = df.withColumn('invoice_date', F.when(F.col('invoice_date').cast(StringType()).startswith('0000-00-00'), F.lit(None)).otherwise(F.col('invoice_date')))
         logger.debug('  [sf-coerce] invoice_date: date -> null zero-dates')
         df = df.withColumn('created_at', F.when(F.col('created_at').cast(StringType()).startswith('0000-00-00'), F.lit(None)).otherwise(F.col('created_at').cast(TimestampType())))
-        logger.debug('  [sf-coerce] created_at: datetime/timestamp -> TimestampType')
+        # Source timestamps are IST (from MySQL); Snowflake stores them converted to IST representation
+        df = df.withColumn('created_at', F.from_utc_timestamp(F.col('created_at'), 'Asia/Kolkata'))
+        logger.debug('  [sf-coerce] created_at: datetime/timestamp -> TimestampType (IST adjusted)')
         df = df.withColumn('load_ts', F.when(F.col('load_ts').cast(StringType()).startswith('0000-00-00'), F.lit(None)).otherwise(F.col('load_ts').cast(TimestampType())))
-        logger.debug('  [sf-coerce] load_ts: datetime/timestamp -> TimestampType')
+        # Source timestamps are IST (from MySQL); Snowflake stores them converted to IST representation
+        df = df.withColumn('load_ts', F.from_utc_timestamp(F.col('load_ts'), 'Asia/Kolkata'))
+        logger.debug('  [sf-coerce] load_ts: datetime/timestamp -> TimestampType (IST adjusted)')
     logger.info('  Output cols : %s', df.columns)
     logger.info('END TRANSFORM | dialect=%s', dialect)
     logger.info('=' * 70)

@@ -2,7 +2,7 @@
 -- STEP 3 : EXTRACT  |  source: logistics_shipments
 -- ============================================================
 -- Dialect    : MySQL 8+
--- Generated  : 2026-04-19 00:43
+-- Generated  : 2026-04-19 01:14
 --
 -- Columns fetched from main source table (dropped cols excluded).
 -- Excluded (drop): driver_nm, driver_phone, internal_ref_no

@@ -203,9 +203,6 @@ try:
 except Exception:
     pass
 
-# ── Align timezone with source data (avoid UTC conversion on Databricks) ──
-spark.conf.set("spark.sql.session.timeZone", "Asia/Kolkata")
-_log.info("✅ Session timezone set to Asia/Kolkata")
 
 _t0 = _time.time()
 passed = step_0_verify_source_schema(spark, pipeline_ctx)

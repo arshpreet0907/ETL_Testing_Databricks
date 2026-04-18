@@ -1,7 +1,7 @@
 -- ============================================================
 -- Source table : logistics_shipments
 -- Dialect      : MySQL 8+
--- Generated    : 2026-04-19 00:43
+-- Generated    : 2026-04-19 01:14
 -- ============================================================
 
 CREATE TABLE IF NOT EXISTS logistics_shipments (
