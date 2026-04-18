@@ -1,19 +1,21 @@
-"""
-main.py — Azure Databricks Job Entry Point
---------------------------------------------
-ETL validation pipeline running on Azure Databricks with dedicated clusters.
+# Databricks notebook source
+# MAGIC %md
+# MAGIC # ETL Validation Pipeline — Azure Databricks
+# MAGIC
+# MAGIC **Execution**: Databricks Job with dedicated clusters
+# MAGIC - **Source**: CSV + schema JSON from Azure Blob Storage (`wasbs://`)
+# MAGIC - **Target**: Snowflake via native Spark-Snowflake connector
+# MAGIC - **Output**: `diff_report.csv` written back to Azure Blob Storage
+# MAGIC - **Secrets**: Azure Key Vault via Databricks secret scope `etl-secrets`
+# MAGIC - **Caching**: Enabled (dedicated cluster)
 
-Source: CSV + schema JSON from Azure Blob Storage (wasbs://)
-Target: Snowflake via native Spark-Snowflake connector
-Output: diff_report.csv written back to Azure Blob Storage
-Secrets: Azure Key Vault via Databricks secret scope "etl-secrets"
-"""
+# COMMAND ----------
 
-import logging
-import os
-import sys
-import time
-from datetime import timedelta
+# ═══════════════════════════════════════════════════════════════
+# CELL 1: CONFIGURATION — Job Parameters
+# ═══════════════════════════════════════════════════════════════
+
+import logging, time as _time, os, sys
 
 logging.basicConfig(
     format="[%(asctime)s] %(levelname)-7s %(message)s",
@@ -22,17 +24,7 @@ logging.basicConfig(
 )
 _log = logging.getLogger("etl_pipeline")
 
-# ═══════════════════════════════════════════════════════════════
-# CONFIGURATION — Job Parameters via Databricks Widgets
-# ═══════════════════════════════════════════════════════════════
-
-from pyspark.sql import SparkSession
-from pyspark.dbutils import DBUtils
-
-spark = SparkSession.getActiveSession() or SparkSession.builder.appName("ETL_Validation").getOrCreate()
-dbutils = DBUtils(spark)
-
-# Define widgets with defaults (Databricks Jobs pass values as parameters)
+# ── Job Parameters (passed via Databricks Job config) ──────────
 dbutils.widgets.text("TABLE_NAME", "warranty_claims")
 dbutils.widgets.text("SUB_PATH", "xl")
 dbutils.widgets.text("STORAGE_ACCOUNT", "etlstorage0907")
@@ -72,8 +64,16 @@ DATE_TO_COL = dbutils.widgets.get("DATE_TO_COL") or None
 
 EXCLUDE_COLS = ["load_ts", "batch_id"]
 
+_log.info(f"Table        : {TABLE_NAME}")
+_log.info(f"Sub-path     : {SUB_PATH}")
+_log.info(f"Storage      : {STORAGE_ACCOUNT}/{CONTAINER}")
+_log.info(f"PK filter    : {PK_FILTER_MODE}")
+_log.info(f"Date filter  : {DATE_WATERMARK_MODE}")
+
+# COMMAND ----------
+
 # ═══════════════════════════════════════════════════════════════
-# AZURE BLOB STORAGE — Configure Spark for wasbs:// access
+# CELL 2: AZURE BLOB STORAGE — Configure wasbs:// access
 # ═══════════════════════════════════════════════════════════════
 
 _blob_key = dbutils.secrets.get("etl-secrets", "blob-storage-key")
@@ -91,14 +91,37 @@ SOURCE_DB_SCHEMA_JSON = f"{BLOB_BASE}/{TABLE_NAME}/{SUB_PATH}/source_db_schema.j
 OUTPUT_DIR = f"{BLOB_BASE}/output/{TABLE_NAME}/{SUB_PATH}"
 REPORT_CSV = f"{OUTPUT_DIR}/diff_report.csv"
 
-_log.info("Table        : %s", TABLE_NAME)
-_log.info("Sub-path     : %s", SUB_PATH)
-_log.info("Storage      : %s/%s", STORAGE_ACCOUNT, CONTAINER)
-_log.info("Source CSV   : %s", SOURCE_CSV_PATH)
-_log.info("Output dir   : %s", OUTPUT_DIR)
+_log.info(f"Source CSV   : {SOURCE_CSV_PATH}")
+_log.info(f"Schema JSON  : {SOURCE_SCHEMA_JSON}")
+_log.info(f"Db Schema    : {SOURCE_DB_SCHEMA_JSON}")
+_log.info(f"Output dir   : {OUTPUT_DIR}")
+_log.info(f"Report CSV   : {REPORT_CSV}")
+
+_log.info("✅ Azure Blob Storage configured")
+
+# COMMAND ----------
 
 # ═══════════════════════════════════════════════════════════════
-# SPARK CONFIG
+# CELL 3: ADD PROJECT TO PYTHON PATH
+# ═══════════════════════════════════════════════════════════════
+
+REPO_PATH = os.path.dirname(os.path.abspath(__file__)) if "__file__" in dir() else os.getcwd()
+
+# Verify repo/workspace path exists
+if not os.path.isdir(REPO_PATH):
+    _log.error(f"Repo not found at {REPO_PATH}")
+    raise FileNotFoundError(f"Repo not found: {REPO_PATH}")
+
+if REPO_PATH not in sys.path:
+    sys.path.insert(0, REPO_PATH)
+
+_log.info(f"✅ Repo found: {REPO_PATH}")
+_log.info(f"   Contents: {os.listdir(REPO_PATH)}")
+
+# COMMAND ----------
+
+# ═══════════════════════════════════════════════════════════════
+# CELL 4: SPARK CONFIG
 # ═══════════════════════════════════════════════════════════════
 
 try:
@@ -110,41 +133,27 @@ try:
 except Exception:
     pass
 
-# ═══════════════════════════════════════════════════════════════
-# ADD PROJECT TO PYTHON PATH (for Repos-based execution)
-# ═══════════════════════════════════════════════════════════════
+_log.info("✅ Spark config set")
 
-# When running as a Databricks Job with Git source, the repo root is
-# automatically on sys.path. For Workspace Repos, add explicitly.
-_repo_dir = os.path.dirname(os.path.abspath(__file__))
-if _repo_dir not in sys.path:
-    sys.path.insert(0, _repo_dir)
+# COMMAND ----------
 
 # ═══════════════════════════════════════════════════════════════
-# BUILD PIPELINE CONTEXT
+# CELL 5: BUILD PIPELINE CONTEXT
 # ═══════════════════════════════════════════════════════════════
 
 from utils.auto_config import get_table_config
 from utils.logger import get_logger
-from utils.custom_execution_utils import (
-    step_0_verify_source_schema,
-    step_1_extract_source,
-    step_2_transform,
-    step_3_5_verify_target_schema,
-    step_4_extract_target,
-    step_5_compare,
-    build_load_filters,
-)
+from utils.custom_execution_utils import build_load_filters
 
 logger = get_logger("etl_pipeline")
 
 config = get_table_config(TABLE_NAME, target_mode="snowflake")
 
-_log.info("Auto-config loaded for: %s", TABLE_NAME)
-_log.info("  Source table : %s", config.get("source_table"))
-_log.info("  Target table : %s", config.get("target_table"))
-_log.info("  Primary Keys : %s", config["primary_keys"])
-_log.info("  Transform    : %s", os.path.basename(config["transform_file"]))
+_log.info(f"✅ Auto-config loaded for: {TABLE_NAME}")
+_log.info(f"   Source table : {config.get('source_table')}")
+_log.info(f"   Target table : {config.get('target_table')}")
+_log.info(f"   Primary Keys : {config['primary_keys']}")
+_log.info(f"   Transform    : {os.path.basename(config['transform_file'])}")
 
 SOURCE_FILTER, TARGET_FILTER = build_load_filters(
     config=config,
@@ -158,8 +167,8 @@ SOURCE_FILTER, TARGET_FILTER = build_load_filters(
     date_to_col=DATE_TO_COL,
 )
 
-_log.info("  Source filter: %s", SOURCE_FILTER["description"])
-_log.info("  Target filter: %s", TARGET_FILTER["description"])
+_log.info(f"   Source filter: {SOURCE_FILTER['description']}")
+_log.info(f"   Target filter: {TARGET_FILTER['description']}")
 
 pipeline_ctx = dict(
     config=config,
@@ -183,88 +192,120 @@ pipeline_ctx = dict(
     source_db_schema_json=SOURCE_DB_SCHEMA_JSON,
 )
 
+# COMMAND ----------
 
 # ═══════════════════════════════════════════════════════════════
-# MAIN PIPELINE
+# CELL 6: STEP 0 — VERIFY SOURCE SCHEMA (.schema.json vs DDL)
 # ═══════════════════════════════════════════════════════════════
 
-def main() -> int:
-    """
-    Run ETL validation pipeline on Azure Databricks.
+from utils.custom_execution_utils import step_0_verify_source_schema
 
-    Flow: step 0 → 1 → 2 → 3.5 → 4 → 5
-      0   : Verify source schema (schema.json vs DDL)
-      1   : Load raw source CSV from Azure Blob Storage
-      2   : Transform (cache result, unpersist raw)
-      3.5 : Verify target schema (Snowflake live)
-      4   : Extract target from Snowflake
-      5   : Compare & generate diff_report.csv
-    """
-    start_time = time.time()
+_t0 = _time.time()
+passed = step_0_verify_source_schema(spark, pipeline_ctx)
+if passed:
+    _log.info(f"✅ Source schema verification PASSED ({_time.time()-_t0:.1f}s)")
+else:
+    _log.warning(f"❌ Source schema verification FAILED ({_time.time()-_t0:.1f}s) — check logs above")
 
-    try:
-        _log.info("=" * 60)
-        _log.info("ETL Validation Pipeline (Azure Databricks)")
-        _log.info("  Table  : %s", TABLE_NAME)
-        _log.info("  Target : Snowflake")
-        _log.info("  Source : Azure Blob Storage (wasbs://)")
-        _log.info("  Source filter : %s", SOURCE_FILTER["description"])
-        _log.info("  Target filter : %s", TARGET_FILTER["description"])
-        _log.info("=" * 60)
+# COMMAND ----------
 
-        # Step 0: optional source schema check
-        if not step_0_verify_source_schema(spark, pipeline_ctx):
-            _log.error("Exiting due to source schema verification failure")
-            return 2
+# ═══════════════════════════════════════════════════════════════
+# CELL 7: STEP 1 — LOAD SOURCE CSV FROM AZURE BLOB STORAGE
+# ═══════════════════════════════════════════════════════════════
 
-        # Step 1: load source from Azure Blob Storage CSV
-        source_df = step_1_extract_source(spark, pipeline_ctx)
+from utils.custom_execution_utils import step_1_extract_source
 
-        # Step 2: transform (caches result, unpersists raw)
-        transformed_df = step_2_transform(source_df, pipeline_ctx, target_mode="snowflake")
+_t0 = _time.time()
+source_df = step_1_extract_source(spark, pipeline_ctx)
+_log.info(f"✅ Source loaded: {source_df.count()} rows, {len(source_df.columns)} columns ({_time.time()-_t0:.1f}s)")
+display(source_df.limit(5))
 
-        # Step 3.5: optional target schema check
-        if not step_3_5_verify_target_schema(spark, pipeline_ctx):
-            _log.error("Exiting due to target schema verification failure")
-            return 2
+# COMMAND ----------
 
-        # Step 4: extract target from Snowflake (cached inside)
-        target_df = step_4_extract_target(spark, pipeline_ctx)
+# ═══════════════════════════════════════════════════════════════
+# CELL 8: STEP 2 — TRANSFORM (cached on dedicated cluster)
+# ═══════════════════════════════════════════════════════════════
 
-        # Step 5: compare & generate diff report
-        t0 = time.time()
-        exit_code = step_5_compare(spark, transformed_df, target_df, pipeline_ctx)
-        _log.info("Compare and Report time: %.2fs", time.time() - t0)
+from utils.custom_execution_utils import step_2_transform
 
-        # Cache cleanup
-        _log.info("Ensuring cached DataFrames are released...")
-        if transformed_df.is_cached:
-            transformed_df.unpersist()
-        if target_df.is_cached:
-            target_df.unpersist()
-        _log.info("Cache cleanup complete.")
+_t0 = _time.time()
+transformed_df = step_2_transform(source_df, pipeline_ctx, "snowflake")
+_log.info(f"✅ Transformed: {transformed_df.count()} rows, {len(transformed_df.columns)} columns ({_time.time()-_t0:.1f}s)")
+_log.info(f"   Columns: {transformed_df.columns}")
+display(transformed_df.limit(5))
 
-        elapsed = timedelta(seconds=int(time.time() - start_time))
-        minutes = elapsed.seconds // 60
-        seconds = elapsed.seconds % 60
-        _log.info("=" * 60)
-        _log.info("Pipeline complete. Exit code: %d", exit_code)
-        _log.info("Total time: %d min %d sec", minutes, seconds)
-        _log.info("=" * 60)
+# COMMAND ----------
 
-        return exit_code
+# ═══════════════════════════════════════════════════════════════
+# CELL 9: STEP 3.5 — VERIFY TARGET SCHEMA (Snowflake live)
+# ═══════════════════════════════════════════════════════════════
+# Requires Snowflake connector library installed on cluster:
+#   Maven: net.snowflake:spark-snowflake_2.12:2.16.0-spark_3.5
+#   Maven: net.snowflake:snowflake-jdbc:3.18.0
 
-    except (FileNotFoundError, ValueError) as exc:
-        _log.error("Configuration error: %s", exc)
-        return 1
-    except KeyboardInterrupt:
-        _log.info("Interrupted by user.")
-        return 1
-    except Exception as exc:
-        _log.exception("Unexpected error: %s", exc)
-        return 99
+from utils.custom_execution_utils import step_3_5_verify_target_schema
 
+_t0 = _time.time()
+passed = step_3_5_verify_target_schema(spark, pipeline_ctx)
+if passed:
+    _log.info(f"✅ Target schema verification PASSED ({_time.time()-_t0:.1f}s)")
+else:
+    _log.warning(f"❌ Target schema verification FAILED ({_time.time()-_t0:.1f}s) — check logs above")
 
-if __name__ == "__main__":
-    sys.exit(main())
+# COMMAND ----------
 
+# ═══════════════════════════════════════════════════════════════
+# CELL 10: STEP 4 — EXTRACT TARGET FROM SNOWFLAKE
+# ═══════════════════════════════════════════════════════════════
+# Snowflake credentials loaded from Key Vault via secret scope "etl-secrets"
+
+from utils.custom_execution_utils import step_4_extract_target
+
+_t0 = _time.time()
+target_df = step_4_extract_target(spark, pipeline_ctx)
+_log.info(f"✅ Target loaded: {target_df.count()} rows, {len(target_df.columns)} columns ({_time.time()-_t0:.1f}s)")
+display(target_df.limit(5))
+
+# COMMAND ----------
+
+# ═══════════════════════════════════════════════════════════════
+# CELL 11: STEP 5 — COMPARE & GENERATE DIFF REPORT
+# ═══════════════════════════════════════════════════════════════
+
+from utils.custom_execution_utils import step_5_compare
+
+_t0 = _time.time()
+exit_code = step_5_compare(spark, transformed_df, target_df, pipeline_ctx)
+elapsed = _time.time() - _t0
+
+if exit_code == 0:
+    _log.info(f"🟢 PASS — No differences found! ({elapsed:.1f}s)")
+else:
+    _log.warning(f"🔴 FAIL — Differences found. ({elapsed:.1f}s)")
+    _log.warning(f"   Report: {REPORT_CSV}")
+
+# COMMAND ----------
+
+# ═══════════════════════════════════════════════════════════════
+# CELL 12: VIEW RESULTS
+# ═══════════════════════════════════════════════════════════════
+
+try:
+    report_df = spark.read.option("header", True).csv(REPORT_CSV)
+    _log.info(f"Diff report: {report_df.count()} rows")
+    display(report_df)
+except Exception:
+    _log.info("No diff report file — either PASS or report path issue")
+
+# COMMAND ----------
+
+# ═══════════════════════════════════════════════════════════════
+# CELL 13: CACHE CLEANUP
+# ═══════════════════════════════════════════════════════════════
+
+_log.info("Ensuring cached DataFrames are released...")
+if transformed_df.is_cached:
+    transformed_df.unpersist()
+if target_df.is_cached:
+    target_df.unpersist()
+_log.info("✅ Cache cleanup complete")
