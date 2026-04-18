@@ -68,6 +68,7 @@ def step_0_verify_source_schema(spark, ctx: dict) -> bool:
         logger.warning("No source_db_schema_json path in context — error in source schema check")
         return False
 
+    # Read schema JSON via dbutils for blob storage compatibility
     passed = verify_schema_from_json_file(
         schema_json_path=schema_json_path,
         ddl_file=ctx["source_ddl"],
@@ -139,15 +140,13 @@ def step_2_transform(source_df, ctx: dict, target_mode: str = "snowflake"):
         target_mode=target_mode,
     )
 
-    # [SERVERLESS] Cache disabled — uncomment for dedicated cluster
-    # transformed_df.cache()
+    transformed_df.cache()
     row_count = transformed_df.count()
     logger.info("Transformed DataFrame: %d rows", row_count)
 
-    # [SERVERLESS] Unpersist disabled — uncomment for dedicated cluster
-    # if source_df.is_cached:
-    #     source_df.unpersist()
-    #     logger.info("Source DataFrame unpersisted (raw cache released)")
+    if source_df.is_cached:
+        source_df.unpersist()
+        logger.info("Source DataFrame unpersisted (raw cache released)")
 
     logger.info("Step 2 complete.")
     return transformed_df

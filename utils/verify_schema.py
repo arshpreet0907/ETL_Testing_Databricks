@@ -61,8 +61,22 @@ def verify_schema_from_json_file(
     """
     logger.info("Verifying schema JSON %s against DDL %s", schema_json_path, ddl_file)
 
-    with open(schema_json_path, "r", encoding="utf-8") as f:
-        spark_schema = StructType.fromJson(json.loads(f.read()))
+    # Read schema JSON — supports both wasbs:// (via dbutils) and local paths
+    if schema_json_path.startswith("wasbs://") or schema_json_path.startswith("dbfs:"):
+        from pyspark.sql import SparkSession
+        spark = SparkSession.getActiveSession()
+        try:
+            from pyspark.dbutils import DBUtils
+            dbutils = DBUtils(spark)
+        except ImportError:
+            import IPython
+            dbutils = IPython.get_ipython().user_ns.get("dbutils")
+        schema_content = dbutils.fs.head(schema_json_path, 1048576)
+    else:
+        with open(schema_json_path, "r", encoding="utf-8") as f:
+            schema_content = f.read()
+
+    spark_schema = StructType.fromJson(json.loads(schema_content))
 
     json_columns = {field.name.upper() for field in spark_schema.fields}
     ddl_columns = _parse_ddl_columns(ddl_file)

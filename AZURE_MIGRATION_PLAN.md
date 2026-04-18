@@ -34,7 +34,7 @@ az databricks workspace create \
 
 # Storage Account (Blob — cheapest for file storage)
 az storage account create \
-  -n etltestingstorage \
+  -n etlstorage0907 \
   -g rg-etl-testing \
   -l eastus \
   --sku Standard_LRS \
@@ -43,7 +43,7 @@ az storage account create \
 # Container for source files
 az storage container create \
   -n etl-source-data \
-  --account-name etltestingstorage
+  --account-name etlstorage0907
 
 # Key Vault for secrets
 az keyvault create \
@@ -67,7 +67,7 @@ az keyvault secret set --vault-name kv-etl-secrets -n sf-warehouse  --value "ETL
 az keyvault secret set --vault-name kv-etl-secrets -n sf-role       --value "ACCOUNTADMIN"
 
 # Azure Blob Storage account key (used for wasbs:// access)
-STORAGE_KEY=$(az storage account keys list --account-name etltestingstorage -g rg-etl-testing --query "[0].value" -o tsv)
+STORAGE_KEY=$(az storage account keys list --account-name etlstorage0907 -g rg-etl-testing --query "[0].value" -o tsv)
 az keyvault secret set --vault-name kv-etl-secrets -n blob-storage-key --value "$STORAGE_KEY"
 ```
 
@@ -93,19 +93,19 @@ az keyvault secret set --vault-name kv-etl-secrets -n blob-storage-key --value "
 az storage blob upload-batch \
   -d etl-source-data/warranty_claims/xl \
   -s output/warranty_claims/xl \
-  --account-name etltestingstorage \
+  --account-name etlstorage0907 \
   --pattern "source_raw*"
 
 az storage blob upload \
   -c etl-source-data \
   -f output/warranty_claims/xl/source_db_schema.json \
   -n warranty_claims/xl/source_db_schema.json \
-  --account-name etltestingstorage
+  --account-name etlstorage0907
 
 # Repeat for each table (cost_ledger, employee_master, etc.)
 ```
 
-**Blob path pattern**: `wasbs://etl-source-data@etltestingstorage.blob.core.windows.net/{TABLE_NAME}/{SUB_PATH}/`
+**Blob path pattern**: `wasbs://etl-source-data@etlstorage0907.blob.core.windows.net/{TABLE_NAME}/{SUB_PATH}/`
 
 ---
 
@@ -128,7 +128,7 @@ Convert from notebook cells to a clean Python Job script:
 |-----------|---------|-------------|
 | `TABLE_NAME` | `warranty_claims` | Table to validate |
 | `SUB_PATH` | `xl` | Sub-path for data files |
-| `STORAGE_ACCOUNT` | `etltestingstorage` | Azure Blob storage account name |
+| `STORAGE_ACCOUNT` | `etlstorage0907` | Azure Blob storage account name |
 | `CONTAINER` | `etl-source-data` | Blob container name |
 | `VERIFY_SCHEMA` | `true` | Enable schema verification |
 | `PK_FILTER_MODE` | `full` | `full` / `pk_range` / `pk_set` |
@@ -344,9 +344,9 @@ net.snowflake:snowflake-jdbc:3.18.0
 1. Check job logs for "Pipeline complete. Exit code: 0"
 2. Verify diff_report.csv in blob storage:
    ```bash
-   az storage blob list -c etl-source-data --account-name etltestingstorage --prefix "output/" -o table
+   az storage blob list -c etl-source-data --account-name etlstorage0907 --prefix "output/" -o table
    ```
-3. Download and inspect: `az storage blob download -c etl-source-data -n output/warranty_claims/xl/diff_report.csv -f diff_report.csv --account-name etltestingstorage`
+3. Download and inspect: `az storage blob download -c etl-source-data -n output/warranty_claims/xl/diff_report.csv -f diff_report.csv --account-name etlstorage0907`
 
 ---
 
@@ -355,7 +355,7 @@ net.snowflake:snowflake-jdbc:3.18.0
 | # | Test | How to Verify | Expected |
 |---|------|---------------|----------|
 | 1 | Secret scope accessible | `dbutils.secrets.list("etl-secrets")` in a notebook | Lists all 8 secrets |
-| 2 | Blob storage readable | `dbutils.fs.ls("wasbs://etl-source-data@etltestingstorage.blob.core.windows.net/warranty_claims/xl/")` | Shows source_raw.csv, etc. |
+| 2 | Blob storage readable | `dbutils.fs.ls("wasbs://etl-source-data@etlstorage0907.blob.core.windows.net/warranty_claims/xl/")` | Shows source_raw.csv, etc. |
 | 3 | Schema JSON parseable | Job log: "Schema loaded from..." | No errors |
 | 4 | Source CSV loads | Job log: "Loaded from storage: X rows, Y columns" | Row count matches expected |
 | 5 | Snowflake connected | Job log: "Snowflake extract: Xs \| Row count: N" | Row count > 0 |
@@ -367,22 +367,52 @@ net.snowflake:snowflake-jdbc:3.18.0
 
 ---
 
-## G. Questions Before Starting
+## G. Decisions (Confirmed)
 
-Before I implement the code changes, please confirm:
+| # | Question | Answer |
+|---|----------|--------|
+| 1 | Storage account name | `etlstorage0907` |
+| 2 | Output location | Same blob container, under `output/{TABLE_NAME}/{SUB_PATH}/` |
+| 3 | Git provider | **GitHub** now, migrate to Azure DevOps later (see Section H) |
+| 4 | Snowflake credentials | Correct — password goes into Key Vault secret `sf-password` |
+| 5 | Multi-table runs | One table per job run (parameterized) |
+| 6 | Notifications | None — only diff_report.csv output |
 
-1. **Storage account name**: Is `etltestingstorage` fine, or do you have a preferred name? (Must be globally unique, 3-24 lowercase alphanumeric chars)
+---
 
-2. **Output location**: Should `diff_report.csv` be written to:
-   - (a) Same blob container as source files (under `output/` prefix)?
-   - (b) A separate blob container?
-   - (c) DBFS (Databricks-managed storage)?
+## H. GitHub → Azure DevOps Transition Plan
 
-3. **Git provider**: Are you using GitHub, Azure DevOps, or another Git host? (Needed for Databricks Repos integration)
+### Current Setup (GitHub)
+- Databricks Repos → Add Repo → GitHub URL + branch `azure-databricks-job`
+- Job source: Workspace file from `/Workspace/Repos/<email>/ETL_Testing_Databricks/main.py`
 
-4. **Snowflake credentials**: Are the values in `run_on_databricks.py` (account=`RPDEFQT-SJ73076`, user=`ARSHPREETSINGH98`, db=`ETL_OUTPUT_SNOWFLAKE_TARGET_JOINS`) still correct for Azure deployment?
+### Migration to Azure DevOps (When Ready)
 
-5. **Multi-table runs**: Do you want the Job to support running all 12 tables in a single job (as separate tasks), or one table per job run?
+1. **Create Azure DevOps project**: `az devops project create --name ETL_Testing_Databricks --org https://dev.azure.com/<your-org>`
+2. **Push repo to Azure DevOps**:
+   ```bash
+   git remote add azdo https://dev.azure.com/<org>/<project>/_git/ETL_Testing_Databricks
+   git push azdo azure-databricks-job
+   ```
+3. **Update Databricks Repos**: 
+   - Delete existing GitHub-linked repo in Databricks
+   - Add Repo → Azure DevOps → select new repo + branch
+   - Generate Azure DevOps PAT (Personal Access Token) with `Code (Read)` scope
+4. **Update Job**: Edit job → change source path to new Repos location (path stays the same if username/repo name match)
+5. **Optional — CI/CD**: Create Azure Pipeline (`azure-pipelines.yml`) to auto-deploy on push:
+   ```yaml
+   trigger:
+     branches: [azure-databricks-job]
+   pool:
+     vmImage: ubuntu-latest
+   steps:
+     - script: |
+         pip install databricks-cli
+         databricks jobs run-now --job-id <JOB_ID>
+       env:
+         DATABRICKS_HOST: $(DATABRICKS_HOST)
+         DATABRICKS_TOKEN: $(DATABRICKS_TOKEN)
+   ```
 
-6. **Notifications**: Do you want email/Slack alerts on job success/failure?
+**Impact**: Zero code changes needed. Only Databricks Repos provider changes.
 
