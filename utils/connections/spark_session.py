@@ -60,6 +60,7 @@ def _get_local_session(app_name: str):
         .config("spark.driver.memory", "4g")
         .config("spark.sql.shuffle.partitions", "4")
         .config("spark.sql.legacy.timeParserPolicy", "LEGACY")
+        .config("spark.sql.session.timeZone", "Asia/Kolkata")
         .config("spark.serializer", "org.apache.spark.serializer.KryoSerializer")
         .config("spark.kryoserializer.buffer.max", "512m")
         .config("spark.network.timeout", "800s")

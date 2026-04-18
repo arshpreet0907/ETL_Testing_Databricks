@@ -85,16 +85,16 @@ def step_0_verify_source_schema(spark, ctx: dict) -> bool:
 def _apply_filter_to_df(df, filter_dict: dict, label: str = "source"):
     """
     Apply a SQL-style where_clause from a filter dict to a Spark DataFrame.
-    Uses spark.sql() via a temp view to leverage the same WHERE syntax.
+    Uses DataFrame.filter() with F.expr() to avoid temp views (serverless-safe).
     Returns the filtered DataFrame, or the original if no filter applies.
     """
+    from pyspark.sql import functions as F
+
     where_clause = (filter_dict or {}).get("where_clause", "")
     if not where_clause:
         return df
 
-    view_name = f"__{label}_filter_temp"
-    df.createOrReplaceTempView(view_name)
-    filtered_df = df.sparkSession.sql(f"SELECT * FROM {view_name} WHERE {where_clause}")
+    filtered_df = df.filter(F.expr(where_clause))
     logger.info("Applied %s filter: %s", label, where_clause)
     return filtered_df
 

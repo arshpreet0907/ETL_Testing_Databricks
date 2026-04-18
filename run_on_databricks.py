@@ -51,8 +51,17 @@ VERIFY_SCHEMA = True
 EXCLUDE_COLS = ["load_ts", "batch_id"]
 
 # ── Filters (full load by default) ───────────────────────────
+# PK_FILTER_MODE: "full" | "pk_range" | "pk_set"
 PK_FILTER_MODE = "full"
+PK_RANGE = {"lower": None, "upper": None}   # Used when PK_FILTER_MODE = "pk_range"
+PK_SET = set()                                # Used when PK_FILTER_MODE = "pk_set"
+
+# DATE_WATERMARK_MODE: "full" | "range"
 DATE_WATERMARK_MODE = "full"
+DATE_FROM = None          # e.g. "2025-01-01"
+DATE_FROM_COL = None      # e.g. "created_at"
+DATE_TO = None            # e.g. "2025-12-31"
+DATE_TO_COL = None        # e.g. "created_at"
 
 _log.info(f"Table        : {TABLE_NAME}")
 _log.info(f"Source CSV   : {SOURCE_CSV_PATH}")
@@ -117,6 +126,7 @@ _log.info("✅ Snowflake config set (password from widget)")
 import time
 from utils.auto_config import get_table_config
 from utils.logger import get_logger
+from utils.custom_execution_utils import build_load_filters
 
 logger = get_logger("databricks_runner")
 
@@ -137,6 +147,22 @@ _log.info(f"   Transform    : {os.path.basename(config['transform_file'])}")
 _log.info(f"   Output dir   : {OUTPUT_DIR}")
 _log.info(f"   Report CSV   : {REPORT_CSV}")
 
+# Build filters from configuration
+SOURCE_FILTER, TARGET_FILTER = build_load_filters(
+    config=config,
+    pk_filter_mode=PK_FILTER_MODE,
+    pk_range=PK_RANGE,
+    pk_set=PK_SET,
+    date_mode=DATE_WATERMARK_MODE,
+    date_from=DATE_FROM,
+    date_from_col=DATE_FROM_COL,
+    date_to=DATE_TO,
+    date_to_col=DATE_TO_COL,
+)
+
+_log.info(f"   Source filter: {SOURCE_FILTER['description']}")
+_log.info(f"   Target filter: {TARGET_FILTER['description']}")
+
 # Build pipeline context
 pipeline_ctx = dict(
     config=config,
@@ -153,8 +179,8 @@ pipeline_ctx = dict(
     source_ddl=config["source_ddl"],
     target_ddl=config["target_ddl"],
     report_csv=REPORT_CSV,
-    source_filter={"where_clause": "", "description": "full load (no filters)"},
-    target_filter={"where_clause": "", "description": "full load (no filters)"},
+    source_filter=SOURCE_FILTER,
+    target_filter=TARGET_FILTER,
     source_csv_path=SOURCE_CSV_PATH,
     source_schema_json=SOURCE_SCHEMA_JSON,
     source_db_schema_json=SOURCE_DB_SCHEMA_JSON
@@ -174,6 +200,10 @@ except Exception:
     pass  # Not available in newer Spark/DBR versions
 try:
     spark.conf.set("spark.sql.legacy.timeParserPolicy", "LEGACY")
+except Exception:
+    pass
+try:
+    spark.conf.set("spark.sql.session.timeZone", "Asia/Kolkata")
 except Exception:
     pass
 
