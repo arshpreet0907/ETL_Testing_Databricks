@@ -150,7 +150,8 @@ def _build_snowflake_connector_opts() -> dict:
             "sfSchema": _SF_DIRECT_CONFIG.get("sfSchema", "PUBLIC"),
             "sfWarehouse": _SF_DIRECT_CONFIG["sfWarehouse"],
             "sfRole": _SF_DIRECT_CONFIG["sfRole"],
-            "sfTimezone": "spark",  # Use Spark session TZ for TIMESTAMP_NTZ (no extra conversion)
+            "sfTimezone": "UTC",
+            "preActions": "ALTER SESSION SET TIMEZONE = 'UTC'",
         }
         logger.info("Snowflake connector opts built from direct config (account=%s, db=%s)",
                      account, database)
@@ -171,7 +172,8 @@ def _build_snowflake_connector_opts() -> dict:
         "sfSchema": "PUBLIC",
         "sfWarehouse": dbutils.secrets.get(scope, "sf-warehouse"),
         "sfRole": dbutils.secrets.get(scope, "sf-role"),
-        "sfTimezone": "spark",  # Use Spark session TZ for TIMESTAMP_NTZ (no extra conversion)
+        "sfTimezone": "UTC",
+        "preActions": "ALTER SESSION SET TIMEZONE = 'UTC'",
     }
 
     logger.info(
