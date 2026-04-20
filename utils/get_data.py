@@ -3,7 +3,8 @@ utils/get_data.py
 -----------------
 Azure Databricks version — two data sources:
   1. Raw source CSV from Azure Blob Storage (wasbs://) — no cache (single-use)
-  2. Snowflake target via native Spark-Snowflake connector — cached (reused)
+  2. Snowflake target via native Spark-Snowflake connector — cached
+     (without cache, comparator's normalisation would re-query Snowflake)
 """
 
 import json
@@ -108,7 +109,12 @@ def get_data_from_snowflake(
         .load()
     )
 
-    # Cache — target_df is reused (display + comparison). Single count materializes.
+    # Cache target_df — without this, comparator's _normalise_df(target_df)
+    # would re-execute the Snowflake query over the network.
+    # Unlike source CSV (which flows into transform creating a new DF),
+    # target_df is passed directly to the comparator which reads it to
+    # build target_norm. The cache is unpersisted by comparator after
+    # target_norm is materialized (comparator.py line ~285).
     df.cache()
     start_time = time.time()
     row_count = df.count()
