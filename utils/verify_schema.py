@@ -37,6 +37,7 @@ class SchemaVerificationError(Exception):
 # --------------------------------------------------------------------------- #
 
 def verify_schema_from_json_file(
+    spark,
     schema_json_path: str,
     ddl_file: str,
     dialect: str = "mysql",
@@ -63,8 +64,8 @@ def verify_schema_from_json_file(
 
     # Read schema JSON — supports both wasbs:// (via dbutils) and local paths
     if schema_json_path.startswith("wasbs://") or schema_json_path.startswith("dbfs:"):
-        from pyspark.sql import SparkSession
-        spark = SparkSession.getActiveSession()
+        # from pyspark.sql import SparkSession
+        # spark = SparkSession.getActiveSession()
         try:
             from pyspark.dbutils import DBUtils
             dbutils = DBUtils(spark)

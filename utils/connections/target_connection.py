@@ -25,7 +25,7 @@ def _get_dbutils():
         return IPython.get_ipython().user_ns.get("dbutils")
 
 
-def get_target_connection(mode: str = "snowflake") -> dict:
+def get_target_connection(mode: str = "snowflake", database_override: str = None) -> dict:
     """
     Return Snowflake connection options from Databricks Secrets.
 
@@ -33,6 +33,9 @@ def get_target_connection(mode: str = "snowflake") -> dict:
     ----------
     mode : str
         Only "snowflake" is supported.
+    database_override : str, optional
+        If provided, overrides the sf-database secret from Key Vault.
+        Passed from the SF_DATABASE widget in main.py.
 
     Returns
     -------
@@ -43,7 +46,7 @@ def get_target_connection(mode: str = "snowflake") -> dict:
         raise ValueError(
             f"Only 'snowflake' target mode is supported, got: {mode!r}"
         )
-    return _build_snowflake_connector_opts()
+    return _build_snowflake_connector_opts(database_override=database_override)
 
 
 def get_snowflake_jdbc_opts() -> dict:
@@ -72,12 +75,13 @@ def get_snowflake_jdbc_opts() -> dict:
     }
 
 
-def _build_snowflake_connector_opts() -> dict:
+def _build_snowflake_connector_opts(database_override: str = None) -> dict:
     """Build Spark-Snowflake connector options from Databricks Secrets."""
     dbutils = _get_dbutils()
 
     account = dbutils.secrets.get(_SECRET_SCOPE, "sf-account")
-    database = dbutils.secrets.get(_SECRET_SCOPE, "sf-database")
+    # Use widget override if provided, otherwise fall back to Key Vault secret
+    database = database_override or dbutils.secrets.get(_SECRET_SCOPE, "sf-database")
     schema = dbutils.secrets.get(_SECRET_SCOPE, "sf-schema") if _secret_exists(dbutils, "sf-schema") else "PUBLIC"
 
     opts = {

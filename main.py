@@ -7,7 +7,7 @@
 # MAGIC - **Target**: Snowflake via native Spark-Snowflake connector
 # MAGIC - **Output**: `diff_report.csv` written back to Azure Blob Storage
 # MAGIC - **Secrets**: Azure Key Vault via Databricks secret scope `etl-secrets`
-# MAGIC - **Caching**: Enabled (dedicated cluster)
+# MAGIC - **Caching**: Selective (transformed + target only; raw source uncached)
 
 # COMMAND ----------
 
@@ -38,6 +38,13 @@ dbutils.widgets.text("DATE_FROM", "")
 dbutils.widgets.text("DATE_FROM_COL", "")
 dbutils.widgets.text("DATE_TO", "")
 dbutils.widgets.text("DATE_TO_COL", "")
+
+# ── Snowflake database override (widget vs secrets toggle) ─────
+# Uncomment the next line to pick database from a widget instead of Key Vault:
+dbutils.widgets.text("SF_DATABASE", "ETL_OUTPUT_SNOWFLAKE_TARGET_JOINS")
+SF_DATABASE = dbutils.widgets.get("SF_DATABASE") or None  # None = use secret
+# To always use Key Vault secret, comment out the two lines above and set:
+# SF_DATABASE = None
 
 TABLE_NAME = dbutils.widgets.get("TABLE_NAME")
 SUB_PATH = dbutils.widgets.get("SUB_PATH")
@@ -76,14 +83,7 @@ _log.info(f"Date filter  : {DATE_WATERMARK_MODE}")
 # CELL 2: AZURE BLOB STORAGE — Configure wasbs:// access
 # ═══════════════════════════════════════════════════════════════
 
-_blob_key = dbutils.secrets.get("etl-secrets", "blob-storage-key")
-spark.conf.set(
-    f"spark.hadoop.fs.azure.account.key.{STORAGE_ACCOUNT}.blob.core.windows.net",
-    _blob_key,
-)
-
 BLOB_BASE = f"wasbs://{CONTAINER}@{STORAGE_ACCOUNT}.blob.core.windows.net"
-
 SOURCE_CSV_PATH = f"{BLOB_BASE}/{TABLE_NAME}/{SUB_PATH}/source_raw.csv"
 SOURCE_SCHEMA_JSON = f"{BLOB_BASE}/{TABLE_NAME}/{SUB_PATH}/source_raw.schema.json"
 SOURCE_DB_SCHEMA_JSON = f"{BLOB_BASE}/{TABLE_NAME}/{SUB_PATH}/source_db_schema.json"
@@ -190,6 +190,7 @@ pipeline_ctx = dict(
     source_csv_path=SOURCE_CSV_PATH,
     source_schema_json=SOURCE_SCHEMA_JSON,
     source_db_schema_json=SOURCE_DB_SCHEMA_JSON,
+    sf_database_override=SF_DATABASE,
 )
 
 # COMMAND ----------
@@ -217,20 +218,20 @@ from utils.custom_execution_utils import step_1_extract_source
 
 _t0 = _time.time()
 source_df = step_1_extract_source(spark, pipeline_ctx)
-_log.info(f"✅ Source loaded: {source_df.count()} rows, {len(source_df.columns)} columns ({_time.time()-_t0:.1f}s)")
+_log.info(f"✅ Source loaded (lazy): {len(source_df.columns)} columns ({_time.time()-_t0:.1f}s)")
 display(source_df.limit(5))
 
 # COMMAND ----------
 
 # ═══════════════════════════════════════════════════════════════
-# CELL 8: STEP 2 — TRANSFORM (cached on dedicated cluster)
+# CELL 8: STEP 2 — TRANSFORM (cached for reuse in comparison)
 # ═══════════════════════════════════════════════════════════════
 
 from utils.custom_execution_utils import step_2_transform
 
 _t0 = _time.time()
-transformed_df = step_2_transform(source_df, pipeline_ctx, "snowflake")
-_log.info(f"✅ Transformed: {transformed_df.count()} rows, {len(transformed_df.columns)} columns ({_time.time()-_t0:.1f}s)")
+transformed_df, _src_row_count = step_2_transform(source_df, pipeline_ctx, "snowflake")
+_log.info(f"✅ Transformed: {_src_row_count} rows, {len(transformed_df.columns)} columns ({_time.time()-_t0:.1f}s)")
 _log.info(f"   Columns: {transformed_df.columns}")
 display(transformed_df.limit(5))
 
@@ -262,8 +263,8 @@ else:
 from utils.custom_execution_utils import step_4_extract_target
 
 _t0 = _time.time()
-target_df = step_4_extract_target(spark, pipeline_ctx)
-_log.info(f"✅ Target loaded: {target_df.count()} rows, {len(target_df.columns)} columns ({_time.time()-_t0:.1f}s)")
+target_df, _tgt_row_count = step_4_extract_target(spark, pipeline_ctx)
+_log.info(f"✅ Target loaded: {_tgt_row_count} rows, {len(target_df.columns)} columns ({_time.time()-_t0:.1f}s)")
 display(target_df.limit(5))
 
 # COMMAND ----------
@@ -303,9 +304,8 @@ except Exception:
 # CELL 13: CACHE CLEANUP
 # ═══════════════════════════════════════════════════════════════
 
-_log.info("Ensuring cached DataFrames are released...")
-if transformed_df.is_cached:
-    transformed_df.unpersist()
-if target_df.is_cached:
-    target_df.unpersist()
+# All intermediate caches (transformed_df, target_df, source_norm, target_norm)
+# are already unpersisted inside compare_dataframes(). This is a safety net.
+_log.info("Clearing any remaining cached DataFrames...")
+spark.catalog.clearCache()
 _log.info("✅ Cache cleanup complete")

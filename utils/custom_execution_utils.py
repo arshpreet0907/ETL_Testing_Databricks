@@ -70,6 +70,7 @@ def step_0_verify_source_schema(spark, ctx: dict) -> bool:
 
     # Read schema JSON via dbutils for blob storage compatibility
     passed = verify_schema_from_json_file(
+        spark=spark,
         schema_json_path=schema_json_path,
         ddl_file=ctx["source_ddl"],
         dialect="mysql",
@@ -128,7 +129,8 @@ def step_1_extract_source(spark, ctx: dict):
 def step_2_transform(source_df, ctx: dict, target_mode: str = "snowflake"):
     """
     Step 2: Apply transformations to source data.
-    Caches transformed_df and unpersists raw source_df.
+    Caches transformed_df for reuse (display + comparison).
+    Returns (transformed_df, row_count) so caller can log without extra .count().
     """
     logger.info("=" * 60)
     logger.info("STEP 2: Apply Transformations")
@@ -140,16 +142,14 @@ def step_2_transform(source_df, ctx: dict, target_mode: str = "snowflake"):
         target_mode=target_mode,
     )
 
+    # Cache — transformed_df is reused: display in main.py + comparison in step 5.
+    # Single .count() materializes the cache and gives us the row count.
     transformed_df.cache()
     row_count = transformed_df.count()
     logger.info("Transformed DataFrame: %d rows", row_count)
 
-    if source_df.is_cached:
-        source_df.unpersist()
-        logger.info("Source DataFrame unpersisted (raw cache released)")
-
     logger.info("Step 2 complete.")
-    return transformed_df
+    return transformed_df, row_count
 
 
 def step_3_5_verify_target_schema(spark, ctx: dict) -> bool:
@@ -162,7 +162,8 @@ def step_3_5_verify_target_schema(spark, ctx: dict) -> bool:
     logger.info("=" * 60)
 
     config = ctx["config"]
-    sf_opts = get_target_connection(mode="snowflake")
+    sf_db_override = ctx.get("sf_database_override")
+    sf_opts = get_target_connection(mode="snowflake", database_override=sf_db_override)
 
     # Fall back to Snowflake connection database if DDL didn't specify one
     target_database = config.get("target_database") or sf_opts.get("sfDatabase")
@@ -199,11 +200,12 @@ def step_4_extract_target(spark, ctx: dict):
     if target_filter["where_clause"]:
         logger.info("Applied WHERE clause: %s", target_filter["where_clause"])
 
-    sf_opts = get_target_connection(mode="snowflake")
-    target_df = get_data_from_snowflake(spark, final_sql, sf_opts)
+    sf_db_override = ctx.get("sf_database_override")
+    sf_opts = get_target_connection(mode="snowflake", database_override=sf_db_override)
+    target_df, row_count = get_data_from_snowflake(spark, final_sql, sf_opts)
 
     logger.info("Step 4 complete.")
-    return target_df
+    return target_df, row_count
 
 
 def step_5_compare(spark, transformed_df, target_df, ctx: dict) -> int:

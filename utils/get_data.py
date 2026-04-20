@@ -2,10 +2,8 @@
 utils/get_data.py
 -----------------
 Azure Databricks version — two data sources:
-  1. Raw source CSV from Azure Blob Storage (wasbs://)
-  2. Snowflake target via native Spark-Snowflake connector
-
-Caching enabled for dedicated clusters.
+  1. Raw source CSV from Azure Blob Storage (wasbs://) — no cache (single-use)
+  2. Snowflake target via native Spark-Snowflake connector — cached (reused)
 """
 
 import json
@@ -72,15 +70,11 @@ def get_data_from_storage(
     else:
         df = reader.option("inferSchema", True).csv(csv_path)
 
-    # Cache for reuse downstream
-    df.cache()
-    start_time = time.time()
-    row_count = df.count()
-    load_time = time.time() - start_time
-
+    # No cache — source_df is used once (flows into transform) then discarded.
+    # Row count is deferred to step_2_transform where it's needed anyway.
     logger.info(
-        "Loaded from storage: %d rows, %d columns in %.2fs",
-        row_count, len(df.columns), load_time,
+        "Loaded from storage (lazy): %d columns",
+        len(df.columns),
     )
     logger.info("Columns: %s", df.columns)
 
@@ -114,9 +108,8 @@ def get_data_from_snowflake(
         .load()
     )
 
-    # Cache and force full materialization to avoid lazy evaluation issues
+    # Cache — target_df is reused (display + comparison). Single count materializes.
     df.cache()
-    df.foreach(lambda _: None)
     start_time = time.time()
     row_count = df.count()
     extract_time = time.time() - start_time
@@ -124,5 +117,5 @@ def get_data_from_snowflake(
     logger.info("Snowflake extract: %.2fs | Row count: %d", extract_time, row_count)
     logger.info("Extraction complete: %d rows, %d columns", row_count, len(df.columns))
     logger.info("Columns: %s", df.columns)
-    return df
+    return df, row_count
 

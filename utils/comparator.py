@@ -831,15 +831,20 @@ def _phase2_collected(
         )
 
         # Step 2: collect source/target rows for mismatched PKs
+        # Use broadcast join for both single and composite PK — avoids full
+        # cache scan that .isin() triggers (scans every partition regardless).
+        # Broadcast join lets Spark use BroadcastHashJoin, which is proportional
+        # to the mismatch count rather than the full dataset size.
         all_cols = pk_cols + compare_cols
         if len(pk_cols) == 1:
             pk = pk_cols[0]
             pk_values = [row[pk] for row in mismatch_pk_rows]
-            src_rows = source_norm.filter(
-                F.col(pk).isin(pk_values)
+            pk_df = spark.createDataFrame([(v,) for v in pk_values], [pk])
+            src_rows = source_norm.join(
+                F.broadcast(pk_df), on=pk, how="inner"
             ).select(*all_cols).collect()
-            tgt_rows = target_norm.filter(
-                F.col(pk).isin(pk_values)
+            tgt_rows = target_norm.join(
+                F.broadcast(pk_df), on=pk, how="inner"
             ).select(*all_cols).collect()
         else:
             # Composite PK — broadcast-join with tiny PK DataFrame
